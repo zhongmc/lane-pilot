@@ -281,9 +281,9 @@ def line_fit( image ):
 	leftx_current = leftx_base
 	rightx_current = rightx_base
 	# Set the width of the windows +/- margin
-	margin = 30
+	margin = 60
 	# Set minimum number of pixels found to recenter window
-	minpix = 30
+	minpix = 15
 	# Create empty lists to receive left and right lane pixel indices
 	left_lane_inds = []
 	right_lane_inds = []
@@ -318,66 +318,42 @@ def line_fit( image ):
 	rightx = nonzerox[right_lane_inds]
 	righty = nonzeroy[right_lane_inds]
 
+
+	if lefty is None or righty is None:
+		return None, None, 0, 0
+	if len(lefty ) == 0 or len(righty ) == 0 :
+		return None, None, 0, 0
+
 	lines = []
-	
-	# x0 = leftx[0]
-	# y0 = lefty[0]
-	# for i in range( len(leftx) - 1 ):
-	# 	x1 = leftx[i+1]
-	# 	y1 = lefty[i+1]
-	# 	aline = np.array([x0,y0,x1,y1])
-	# 	lines.append(aline )
-	# 	x0 = x1
-	# 	y0 = y1
 
-	# x0 = rightx[0]
-	# y0 = righty[0]
-	# for i in range( len(rightx) - 1 ):
-	# 	x1 = rightx[i+1]
-	# 	y1 = righty[i+1]
-	# 	aline = np.array([x0,y0,x1,y1])
-	# 	lines.append(aline )
-	# 	x0 = x1
-	# 	y0 = y1
+#二阶拟合，求切线
+	left_line, left_fit, left_x0, kl  = line_of_poly( leftx, lefty,   height-1, 80  )  # x = ay^2 + by + c
+	lines.append( left_line )
 
-	left_fit = np.polyfit(lefty, leftx, 1)
-	right_fit = np.polyfit(righty, rightx, 1)
+	right_line, right_fit, right_x0, kr  = line_of_poly( rightx, righty,  height-1, 80  )
+	lines.append( right_line )
 
-#	left_fit = np.polyfit(leftx, lefty, 1)
-#	right_fit = np.polyfit(rightx, righty, 1)
-
-	y0 = height -1
-	x0 = int(left_fit[0] * y0 + left_fit[1])
-	y1 = 50
-	x1 = int(left_fit[0] * y1 + left_fit[1])
-	aline = np.array([x0,y0,x1,y1])
-	lines.append(aline)
-
-	theta_l = math.atan2(y1 - y0, x1 - x0 )
-
-	y0 = height -1
-	x0 = int(right_fit[0] * y0 + right_fit[1])
-	y1 = 50
-	x1 = int(right_fit[0] * y1 + right_fit[1])
-
-	aline = np.array([x0,y0,x1,y1])
-	lines.append(aline)
-
-	theta_r = math.atan2(y1 - y0, x1 - x0 )
-	avg_theta = ( theta_l + theta_r )/2
-
-	print(theta_l, theta_r, avg_theta )
-
-	x0 = int(( leftx_base + rightx_base ) /2)
+#中间目标线
+	k0 = (kl + kr)/2
+	x0 = (left_x0 + right_x0)/2
 	y0 = height - 1
-	x1 = int( x0 + 200 * math.cos( avg_theta ))
-	y1 = int(y0 + 200 * math.sin( avg_theta ))
+	y1 = 80
+	x1 = k0 * (y1 - y0) + x0
+	avg_theta = math.atan2( y1 - y0, x1-x0 )
+	x0 = int(x0)
+	x1 = int( x1 )
+	goal_line = np.array([x0, y0, x1, y1 ])
+	lines.append( goal_line )
+	return lines,  left_fit, right_fit, avg_theta, int(x0 - width/2)
 
-	aline = np.array([x0,y0,x1,y1])
-	lines.append(aline)
-	return lines, aline, avg_theta, int(x0 - width/2)
-
-
+#二阶拟合，求切线
+def line_of_poly( xp, yp,  y0, y1 ):
+	poly_fit = np.polyfit(yp, xp, 2)  #x = ay^2 + by + c
+	x0 = poly_fit[0] *y0**2 + poly_fit[1] * y0 + poly_fit[2]
+	k = 2* poly_fit[0] *y0 + poly_fit[1]
+	x1 = int( k*(y1 - y0)  + x0 )
+	x0 = int( x0 )
+	return np.array([x0, y0, x1, y1] ), poly_fit, x0, k
 
 def histogram_analy(  image_file ):
 # Read camera calibration coefficients
@@ -404,23 +380,48 @@ def histogram_analy(  image_file ):
 
 	canny_image = canny( undis_image )
 	#	print( elapsed )
-	#m, m_inv = transform_matrix_640()
-	#if width == 320:
-	m, m_inv = transform_matrix_320()
+	m, m_inv = transform_matrix_640()
+	if width == 320:
+		m, m_inv = transform_matrix_320()
 
 	wraped_image = cv2.warpPerspective(canny_image, m, (width, height), flags=cv2.INTER_LINEAR)
 
 	# lines,  target_line, line_theta,  d_center   = hough_lines( wraped_image )
-	# line_image = display_lines( image, lines, (0,0,255), 1, None )
+	lines,  left_fit, right_fit, line_theta,  d_center   = line_fit( wraped_image )
 
-	lines,  target_line, line_theta,  d_center   = line_fit( wraped_image )
-	line_image = display_lines( image, lines, (0,0,255), 3, None )
+	line_image = np.zeros_like(image)
+	if lines is not None:
+		cnt = int(height / 10)
+		ploty = np.linspace(0,  height -1, cnt  )
+		left_fitx = left_fit[0]*ploty**2 + left_fit[1]*ploty + left_fit[2]
+		right_fitx = right_fit[0]*ploty**2 + right_fit[1]*ploty + right_fit[2]
+	
+		for i in range(cnt - 1) :
+			xl0 = int( left_fitx[i])
+			xr0 = int(right_fitx[i])
+			y0 = int(ploty[i])
+			xl1 = int(left_fitx[i + 1])
+			xr1 = int(right_fitx[i+1])
+			y1 = int(ploty[i+1])
+			cv2.line( line_image, (xl0,y0), (xl1, y1), (255, 255, 0), 10 )
+			cv2.line( line_image, (xr0,y0), (xr1, y1), (255, 255, 0),  10  )
+
+		x1,y1,x2,y2 =  lines[0].reshape(4)
+		cv2.line( line_image, (x1,y1), (x2, y2), (0, 0, 255), 2 )
+		x1,y1,x2,y2 =  lines[1].reshape(4)
+		cv2.line( line_image, (x1,y1), (x2, y2), (0, 0, 255), 2 )
+		x1,y1,x2,y2 =  lines[2].reshape(4)
+		cv2.line( line_image, (x1,y1), (x2, y2), (255, 0, 0), 5 )
+
+
+
+
 
 	ctrl_theta = -np.pi/2 - line_theta
 	# Warp the blank back to original image space using inverse perspective matrix (Minv)
 	newwarp = cv2.warpPerspective(line_image, m_inv, (width, height))
 	# Combine the result with the original image
-	result_image = cv2.addWeighted(undis_image, 1, newwarp, 0.5, 0)
+	result_image = cv2.addWeighted(undis_image, 0.8, newwarp, 0.8, 0)
 	elapsed = time() - start
 
 	label = 'w: %.3f dc: %d;t:%.2f' % (ctrl_theta, d_center, elapsed*1000)
@@ -455,20 +456,23 @@ def histogram_analy(  image_file ):
 	img2 = cv2.merge([r,g,b])  
 	plt.imshow(img2)
 	plt.title("result  img")
-	# histogram = np.sum(wraped_image[height//2:,:], axis=0)
-	# histogram = histogram / 255
-	# mlval  = np.amax(histogram)
-	# plt.subplot(325)
-	# plt.plot(histogram)
-	# plt.xlim(0, width)
-	# plt.ylim(0, mlval)
-	# plt.title("X histogram")
-	# midpoint= np.int(histogram.shape[0]/2)
-	# leftx_base = np.argmax(histogram[0:midpoint])
-	# rightx_base = np.argmax(histogram[midpoint: histogram.shape[0]]) + midpoint
-	# mlval  = np.amax(histogram[0:midpoint])
-	# mrval = np.amax(histogram[midpoint:])
-	# print('x-l %d : %d x-r: %d : %d ' %( leftx_base,  mlval, rightx_base, mrval))
+
+	plt.tight_layout()
+
+	histogram = np.sum(wraped_image[height//2:,:], axis=0)
+	histogram = histogram / 255
+	mlval  = np.amax(histogram)
+	plt.subplot(236)
+	plt.plot(histogram)
+	plt.xlim(0, width)
+	plt.ylim(0, mlval)
+	plt.title("X histogram")
+	midpoint= np.int(histogram.shape[0]/2)
+	leftx_base = np.argmax(histogram[0:midpoint])
+	rightx_base = np.argmax(histogram[midpoint: histogram.shape[0]]) + midpoint
+	mlval  = np.amax(histogram[0:midpoint])
+	mrval = np.amax(histogram[midpoint:])
+	print('x-l %d : %d x-r: %d : %d ' %( leftx_base,  mlval, rightx_base, mrval))
 
 
 	# #histogram = np.sum(wraped[wraped.shape[0]//2:,:], axis=1)

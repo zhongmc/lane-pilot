@@ -53,11 +53,11 @@ class WebController(tornado.web.Application):
         self.listen(self.port)
         tornado.ioloop.IOLoop.instance().start()
        
-    def run(self, img_arr=None):
-        if img_arr is None:
+    def update_image(self, image =None):
+        if image is None:
             return  self.angle, self.throttle, self.mode, self.recording
         
-        r, i = cv2.imencode('.jpg', img_arr )
+        r, i = cv2.imencode('.jpg', image )
         if r :
             self.image_data  =  bytes(i.data)
             self.image_timestamp  = time.time()
@@ -81,7 +81,7 @@ class DriveHandler(tornado.web.RequestHandler):
         self.application.throttle = data['throttle']
         self.application.mode = data['drive_mode']
         self.application.recording = data['recording']
-
+        print( self.application.angle,  self.application.throttle, self.application.mode )
 
 class VideoHandler(tornado.web.RequestHandler):
     '''
@@ -149,7 +149,7 @@ if __name__ == '__main__':
  
     while True:
         ret,  image = cap.read()
-        web.run( image )
+        web.update_image( image )
         # cv2.imshow(WINDOW_NAME, image )
         key = cv2.waitKey(10)
         if key == 27:

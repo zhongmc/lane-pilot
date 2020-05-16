@@ -3,7 +3,7 @@ import cv2
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 import pickle
-
+import sys
 
 def abs_sobel_thresh(img, orient='x', thresh_min=20, thresh_max=100):
 	"""
@@ -12,6 +12,9 @@ def abs_sobel_thresh(img, orient='x', thresh_min=20, thresh_max=100):
 	# Convert to grayscale
 	gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
 	# Apply x or y gradient with the OpenCV Sobel() function
+
+	gray = cv2.GaussianBlur(gray, (5,5), 0)
+
 	# and take the absolute value
 	if orient == 'x':
 		abs_sobel = np.absolute(cv2.Sobel(gray, cv2.CV_64F, 1, 0))
@@ -82,7 +85,7 @@ def hls_thresh(img, thresh=(100, 255)):
 
 
 def combined_thresh(img):
-	abs_bin = abs_sobel_thresh(img, orient='x', thresh_min=50, thresh_max=255)
+	abs_bin = abs_sobel_thresh(img, orient='x', thresh_min=20, thresh_max=185)  #50 255
 	mag_bin = mag_thresh(img, sobel_kernel=3, mag_thresh=(50, 255))
 	dir_bin = dir_threshold(img, sobel_kernel=15, thresh=(0.7, 1.3))
 	hls_bin = hls_thresh(img, thresh=(170, 255))
@@ -97,12 +100,17 @@ if __name__ == '__main__':
 	img_file = 'test_images/straight_lines1.jpg'
 	img_file = 'test_images/test5.jpg'
 
-	with open('calibrate_camera.p', 'rb') as f:
+	if  len(sys.argv) < 2:
+		print('python histogram.py imgfile')
+		sys.exit('please specify a file !')
+	
+	# with open('calibrate_camera.p', 'rb') as f:
+	with open('camera_cal_640_480.p', 'rb') as f:
 		save_dict = pickle.load(f)
 	mtx = save_dict['mtx']
 	dist = save_dict['dist']
 
-	img = mpimg.imread(img_file)
+	img = mpimg.imread( sys.argv[1] )
 	img = cv2.undistort(img, mtx, dist, None, mtx)
 
 	combined, abs_bin, mag_bin, dir_bin, hls_bin = combined_thresh(img)

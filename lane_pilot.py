@@ -11,12 +11,13 @@ import math
 import argparse
 
 from zmcrobot import ZMCRobot
+from web_camera import WebController
 #from combined_thresh import combined_thresh
 #from line_fit import line_fit, viz2, calc_curve, final_viz
 
 import sys
 from time import time
-
+from threading import Thread
 
 WINDOW_NAME = 'Line Pilot'
 
@@ -87,95 +88,6 @@ def image_right(image ):
 	masked_image = cv2.bitwise_and(image, mask)
 	return masked_image
 
-#get the line start x0 according to the dot histogrtam
-def line_start_x0( image ):
-	height = image.shape[0]
-	width = image.shape[1]
-	histogram = np.sum(image[height - 30:,:], axis=0)
-	x0 = 0
-	cnt = 0
-	for idx in range(0, width ):
-		if histogram[idx] != 0 :
-			x0 = x0 + idx
-			cnt = cnt + 1
-	if cnt != 0 :
-		x0 = x0 / cnt
-	return x0
-
-
-def make_coordinates(height, line_parameters ):
-    slope, intercept = line_parameters
-    y1 = height
-    y2 = 0 # int(y1 *(3/5))
-    x1 = int ((y1 - intercept)/slope)
-    x2 = int ((y2 - intercept)/slope)
-    return np.array([x1,y1,x2,y2])
-
-def average_slop_intercept(height, lines ):
-	line_fit = []
-	for line  in lines:
-		x1,y1,x2,y2  = line.reshape(4)
-		parameters = np.polyfit((x1,x2), (y1,y2), 1 )
-		slope = parameters[0]
-		intercept = parameters[1]
-		line_fit.append((slope, intercept))
-		line_fit_average = np.average( line_fit, axis = 0)
-	line = make_coordinates(height, line_fit_average)
-	return line
- 
-
-def average_line(height, start_x,  lines ):
-	theta =0.0
-	cnt = 0
-	x0 = 0.0
-
-	if lines is  None:
-		return None, 0, 0
-
-#	print('count avg line: ')
-	for line in lines:
-		x1,y1,x2,y2 = line.reshape(4)
-		atheta = math.atan2(y2-y1, x2-x1)
-		if( atheta < 0 ):
-			atheta = math.atan2(y1-y2, x1-x2)
-#		if abs( theta ) < ( 5.0 * np.pi / 180) :  #ignore the 
-#			continue
-		if  atheta  >  0.18 and atheta < 2.9  :
-			xc = cross_x(x1, y1, x2, y2, height-1  )
-			if( xc >=start_x - 25 and xc <= start_x + 25  ):
-				theta =theta + atheta
-				cnt = cnt + 1
-				x0 = x0 + xc
-		#	print( 'xc: %0.2f theta: %0.3f' %( xc, atheta ) )
-	#	else :
-	#		print( 'x1: %0.2f theta: %0.3f' %( x1, atheta ) )
-	if cnt == 0 :
-	#	print( 'no line found')
-		return None, 0, 0
-
-	avg_x  = x0 / cnt
-	avg_theta = theta / cnt
-
-	avg_theta = math.atan2(math.sin( avg_theta), math.cos( avg_theta ) )
-#	print('x0:%0.2f theta: %.3f' % (avg_x, avg_theta ) )
-	x1 = int( avg_x )
-	y1 = height - 1
-	x2 = int(  x1 - 500.0 * math.cos( avg_theta ))
-	y2 = int( y1 - 500.0 * math.sin( avg_theta ))
-	aline = np.array([x1,y1,x2,y2])
-#	print( aline )
-	return aline, avg_theta, x1
-
-
-
-def cross_x(x1, y1, x2, y2, h ):
-	if x1 - x2 ==  0 :
-		return x1
-	a = (y1-y2)/(x1 -x2)
-	b = y1 - a * x1
-	x = (h  - b )/a
-	return x
-
 def canny( image ):
 	gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
 	blur = cv2.GaussianBlur(gray, (5,5), 0)
@@ -188,64 +100,6 @@ def auto_canny(image, sigma=0.33):
 	upper = int(min(255, (1.0 + sigma)*v))
 	edged = cv2.Canny( image, lower, upper )
 	return edged
-
-def display_lines(image, lines, line_color, line_width = 1, line_image = None  ):
-	if line_image is None:
-		line_image = np.zeros_like(image)
-	if lines is not None:
-		for line in lines:
-			x1,y1,x2,y2 =  line.reshape(4)
-			cv2.line( line_image, (x1,y1), (x2, y2), line_color, line_width )
-	return line_image
-
-
-def hough_lines( image ):
-	width = image.shape[1]
-	height = image.shape[0]
-	left_image = image_left( image  )
-	right_image = image_right(image )
-	left_lines = cv2.HoughLinesP(left_image, 2, np.pi/180, 100, np.array([]), minLineLength=50, maxLineGap=5)
-	right_lines = cv2.HoughLinesP(right_image, 2, np.pi/180, 100, np.array([]), minLineLength=50, maxLineGap=5)
-
-	line_start_left_x = line_start_x0( left_image )
-	line_strart_right_x = line_start_x0( right_image )
-
-	#	print('x0-l: %d x0-r: %d ' % (line_start_left_x, line_strart_right_x))
-	avg_left_line, avg_theta_left, x0_left = average_line(height,  line_start_left_x,	left_lines )
-	avg_right_line, avg_theta_right,  x0_right = average_line(height, line_strart_right_x,	right_lines )
-
-	lines = []
-	if left_lines is not None:
-		for line in left_lines :
-			lines.append( line )
-	if right_lines is not None:
-		for line in right_lines :
-			lines.append( line )
-
-	not_rec = False
-	if avg_left_line is  None :
-		not_rec = True
-	else:
-		lines.append( avg_left_line)
-
-	if avg_right_line is None:
-		not_rec = True
-	else:
-		lines.append( avg_right_line )
-
-	target_line = None
-	if not_rec == False:
-		x1 = width/2
-		y1 = height - 1
-		avg_theta = (avg_theta_left + avg_theta_right)/2
-		x2 = int(x1 - 300.0 * math.cos(avg_theta ))
-		y2 =  int(x1 - 300.0 * math.sin(avg_theta))
-		x1 = int(x1)
-		target_line = np.array([x1,y1,x2,y2])
-		lines.append(target_line  )
-	d_center = line_start_left_x - width + line_strart_right_x
-	return lines, target_line, avg_theta, d_center 
-
 
 
 def line_fit( image ):
@@ -271,9 +125,9 @@ def line_fit( image ):
 	leftx_current = leftx_base
 	rightx_current = rightx_base
 	# Set the width of the windows +/- margin
-	margin = 30
+	margin = 60
 	# Set minimum number of pixels found to recenter window
-	minpix = 30
+	minpix = 15
 	# Create empty lists to receive left and right lane pixel indices
 	left_lane_inds = []
 	right_lane_inds = []
@@ -281,8 +135,8 @@ def line_fit( image ):
 	# Step through the windows one by one
 	for window in range(nwindows):
 		# Identify window boundaries in x and y (and right and left)
-		win_y_low = height - (window+1)*window_height
-		win_y_high = height - window*window_height
+		win_y_low =height - (window+1)*window_height
+		win_y_high =height - window*window_height
 		win_xleft_low = leftx_current - margin
 		win_xleft_high = leftx_current + margin
 		win_xright_low = rightx_current - margin
@@ -308,72 +162,42 @@ def line_fit( image ):
 	rightx = nonzerox[right_lane_inds]
 	righty = nonzeroy[right_lane_inds]
 
-	lines = []
-	
-	# x0 = leftx[0]
-	# y0 = lefty[0]
-	# for i in range( len(leftx) - 1 ):
-	# 	x1 = leftx[i+1]
-	# 	y1 = lefty[i+1]
-	# 	lines.append([x0,y0,x1,y1])
-	# 	x0 = x1
-	# 	y0 = y1
-
-	# x0 = rightx[0]
-	# y0 = righty[0]
-	# for i in range( len(rightx) - 1 ):
-	# 	x1 = rightx[i+1]
-	# 	y1 = righty[i+1]
-	# 	lines.append([x0,y0,x1,y1])
-	# 	x0 = x1
-	# 	y0 = y1
 
 	if lefty is None or righty is None:
-		return None, None, 0, 0
+		return None, None, None, 0, 0
+	if len(lefty ) == 0 or len(righty ) == 0 :
+		return None, None, None, 0, 0
 
-	left_fit = np.polyfit(lefty, leftx, 1)
-	right_fit = np.polyfit(righty, rightx, 1)
+	lines = []
 
-	y0 = height -1
-	x0 = int(left_fit[0] * y0 + left_fit[1])
-	y1 = 50
-	x1 = int(left_fit[0] * y1 + left_fit[1])
-	aline = np.array([x0,y0,x1,y1])
-	lines.append(aline)
+#二阶拟合，求切线
+	left_line, left_fit, left_x0, kl  = line_of_poly( leftx, lefty,   height-1, 80  )  # x = ay^2 + by + c
+	lines.append( left_line )
 
-	theta_l = math.atan2(y1 - y0, x1 - x0 )
+	right_line, right_fit, right_x0, kr  = line_of_poly( rightx, righty,  height-1, 80  )
+	lines.append( right_line )
 
-	y0 = height -1
-	x0 = int(right_fit[0] * y0 + right_fit[1])
-	y1 = 50
-	x1 = int(right_fit[0] * y1 + right_fit[1])
-
-	aline = np.array([x0,y0,x1,y1])
-	lines.append(aline)
-
-	theta_r = math.atan2(y1 - y0, x1 - x0 )
-	avg_theta = ( theta_l + theta_r )/2
-
-	x0 = int(( leftx_base + rightx_base ) /2)
+#中间目标线
+	k0 = (kl + kr)/2
+	x0 = (left_x0 + right_x0)/2
 	y0 = height - 1
-	x1 = int( x0 + 200 * math.cos( avg_theta ))
-	y1 = int(y0 + 200 * math.sin( avg_theta ))
+	y1 = 80
+	x1 = k0 * (y1 - y0) + x0
+	avg_theta = math.atan2( y1 - y0, x1-x0 )
+	x0 = int(x0)
+	x1 = int( x1 )
+	goal_line = np.array([x0, y0, x1, y1 ])
+	lines.append( goal_line )
+	return lines,  left_fit, right_fit, avg_theta, int(x0 - width/2)
 
-	# x1 = int(200 * math.cos( avg_theta ))
-	# y1 = int(200 * math.sin( avg_theta ))
-
-	aline = np.array([x0,y0,x1,y1])
-	lines.append(aline)
-
-
-	# Fit a second order polynomial to each
-	#left_fit = np.polyfit(lefty, leftx, 2)
-	#right_fit = np.polyfit(righty, rightx, 2)
-	
-	return lines, aline, avg_theta,  int(x0 - width/2)
-
-
-
+#二阶拟合，求切线
+def line_of_poly( xp, yp,  y0, y1 ):
+	poly_fit = np.polyfit(yp, xp, 2)  #x = ay^2 + by + c
+	x0 = poly_fit[0] *y0**2 + poly_fit[1] * y0 + poly_fit[2]
+	k = 2* poly_fit[0] *y0 + poly_fit[1]
+	x1 = int( k*(y1 - y0)  + x0 )
+	x0 = int( x0 )
+	return np.array([x0, y0, x1, y1] ), poly_fit, x0, k
 
 def line_pilot( cap, width, height ):
 	with open('camera_cal_640_480.p', 'rb') as f:
@@ -381,12 +205,20 @@ def line_pilot( cap, width, height ):
 	mtx = save_dict['mtx']
 	dist = save_dict['dist']
 	zmcRobot = ZMCRobot()
-
+	web = WebController()
+	t = Thread(target=web.start, args=())
+	t.daemon = True
+	t.start()
+  
 	m, m_inv =transform_matrix_640()
 	if width == 320:
 		m, m_inv = transform_matrix_320()
 	# height = 480
 	# width = 640
+	elapsed = 0
+	ctrl_theta = 0
+	d_center = 0
+
 	while True:
 		if cv2.getWindowProperty(WINDOW_NAME, 0) < 0:
 			break #check to see if the user has closed the window
@@ -397,21 +229,41 @@ def line_pilot( cap, width, height ):
 		canny_image = canny( undis_image )
 		wraped_image = cv2.warpPerspective(canny_image, m, (width, height))
 
-	#	lines,  target_line, line_theta,  d_center   = hough_lines( wraped_image )
-		lines,  target_line, line_theta,  d_center   = 	line_fit(wraped_image)
-		line_image = display_lines( image, lines, (0,0,255), 1, None )
-		
-		ctrl_theta = -np.pi/2 - line_theta
-		if target_line is not None:
+		lines,  left_fit, right_fit, line_theta,  d_center   = line_fit( wraped_image )
+		line_image = np.zeros_like(image)
+		if lines is not None:
+			cnt = int(height / 10)
+			ploty = np.linspace(0,  height -1, cnt  )
+			left_fitx = left_fit[0]*ploty**2 + left_fit[1]*ploty + left_fit[2]
+			right_fitx = right_fit[0]*ploty**2 + right_fit[1]*ploty + right_fit[2]
+			for i in range(cnt - 1) :
+				xl0 = int( left_fitx[i])
+				xr0 = int(right_fitx[i])
+				y0 = int(ploty[i])
+				xl1 = int(left_fitx[i + 1])
+				xr1 = int(right_fitx[i+1])
+				y1 = int(ploty[i+1])
+				cv2.line( line_image, (xl0,y0), (xl1, y1), (255, 255, 0), 10 )
+				cv2.line( line_image, (xr0,y0), (xr1, y1), (255, 255, 0),  10  )
+
+			x1,y1,x2,y2 =  lines[0].reshape(4)
+			cv2.line( line_image, (x1,y1), (x2, y2), (0, 0, 255), 2 )
+			x1,y1,x2,y2 =  lines[1].reshape(4)
+			cv2.line( line_image, (x1,y1), (x2, y2), (0, 0, 255), 2 )
+			x1,y1,x2,y2 =  lines[2].reshape(4)
+			cv2.line( line_image, (x1,y1), (x2, y2), (255, 0, 0), 5 )
+			ctrl_theta = -np.pi/2 - line_theta
 			zmcRobot.drive_car(0.09, ctrl_theta )
 
 	# Warp the blank back to original image space using inverse perspective matrix (Minv)
 		newwarp = cv2.warpPerspective(line_image, m_inv, (width, height))
 	# Combine the result with the original image
-		result_image = cv2.addWeighted(undis_image, 1, newwarp, 0.3, 0)
-		elapsed = time() - start
+		result_image = cv2.addWeighted(undis_image, 1, newwarp, 0.5, 0)
 		label = 'w: %.3f dc: %d;t:%.2f' % (ctrl_theta, d_center, elapsed*1000)
-		result_image = cv2.putText(result_image, label, (30,40), 0, 0.7, (128,0,255), 2, cv2.LINE_AA)
+		result_image = cv2.putText(result_image, label, (30,40), 0, 0.7, (128,0,128), 2, cv2.LINE_AA)
+		web.update_image( result_image )
+
+		elapsed = time() - start
 
 		cv2.imshow(WINDOW_NAME, result_image )
 		key = cv2.waitKey(10)
