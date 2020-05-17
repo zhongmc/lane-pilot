@@ -252,7 +252,7 @@ def line_pilot( cap, width, height ):
 			cv2.line( line_image, (x1,y1), (x2, y2), (0, 0, 255), 2 )
 			x1,y1,x2,y2 =  lines[2].reshape(4)
 			cv2.line( line_image, (x1,y1), (x2, y2), (255, 0, 0), 5 )
-			ctrl_theta = -np.pi/2 - line_theta
+			ctrl_theta = np.pi/2 + line_theta
 			zmcRobot.drive_car(0.09, ctrl_theta )
 
 	# Warp the blank back to original image space using inverse perspective matrix (Minv)

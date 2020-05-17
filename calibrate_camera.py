@@ -62,7 +62,7 @@ def calibrate_camera( filePath, fileName ):
 		objp[:,:2] = np.mgrid[0:nx, 0:ny].T.reshape(-1,2)
 
 		# Make a list of calibration images
-		fname =   filePath +file + str(k) + fileex   #'camera_cal/calibration%s.jpg' % str(k)
+		fname =   filePath +'/' + file + str(k) + fileex   #'camera_cal/calibration%s.jpg' % str(k)
 		img = cv2.imread(fname)
 
 		# Convert to grayscale

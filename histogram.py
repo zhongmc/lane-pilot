@@ -53,7 +53,7 @@ def perspective_transform(img):
 
 def transform_matrix_640():
 	src = np.float32(
-		[[11,479],
+		[[10,479],
 		[231,100],
 		[407,100],
 		[629, 479]])
@@ -65,14 +65,14 @@ def transform_matrix_640():
 		[539, 479]])
 	m = cv2.getPerspectiveTransform(src, dst)
 	m_inv = cv2.getPerspectiveTransform(dst, src)
-	return m, m_inv
+	return m, m_inv, src
 
 def transform_matrix_320():
 	src = np.float32(
 		[[5,239],
 		[98,80],  #196,160
 		[221,80], #443, 160
-		[315, 239]])
+		[314, 239]])
 
 	dst = np.float32(
 		[[50, 239],
@@ -81,7 +81,7 @@ def transform_matrix_320():
 		[269, 239]])
 	m = cv2.getPerspectiveTransform(src, dst)
 	m_inv = cv2.getPerspectiveTransform(dst, src)
-	return m, m_inv
+	return m, m_inv, src
 
 
 def image_left( image ):
@@ -357,32 +357,22 @@ def line_of_poly( xp, yp,  y0, y1 ):
 
 def histogram_analy(  image_file ):
 # Read camera calibration coefficients
-#	with open('calibrate_camera.p', 'rb') as f:
-	with open('camera_cal_640_480.p', 'rb') as f:
-		save_dict = pickle.load(f)
-
-	mtx = save_dict['mtx']
-	dist = save_dict['dist']
-
-	out_path = './out_images/'
-	out_image_file = os.path.basename( image_file )
-	print( out_image_file  )
-	out_image_file = out_image_file.split('.')[0] + '.png'  # write to png format
-	# zmcRobot = ZMCRobot()
-
-
-	image = cv2.imread(image_file)
-	undis_image = cv2.undistort(image, mtx, dist, None, mtx)
-	
-	height = image.shape[0]
-	width = image.shape[1]
 	start = time()
 
+	image = cv2.imread(image_file)
+	height = image.shape[0]
+	width = image.shape[1]
+	cal_file = 'camera_cal' + str(width) + '-' + str(height) + '.p'
+	with open(cal_file, 'rb') as f:
+		save_dict = pickle.load(f)
+	mtx = save_dict['mtx']
+	dist = save_dict['dist']
+	undis_image = cv2.undistort(image, mtx, dist, None, mtx)
 	canny_image = canny( undis_image )
 	#	print( elapsed )
-	m, m_inv = transform_matrix_640()
+	m, m_inv, src = transform_matrix_640()
 	if width == 320:
-		m, m_inv = transform_matrix_320()
+		m, m_inv, src = transform_matrix_320()
 
 	wraped_image = cv2.warpPerspective(canny_image, m, (width, height), flags=cv2.INTER_LINEAR)
 
@@ -446,7 +436,10 @@ def histogram_analy(  image_file ):
 	plt.title("wraped img")
 
 	plt.subplot(234)
-	plt.imshow(line_image, cmap = plt.cm.gray )
+	b,g,r = cv2.split(line_image)  
+	img2 = cv2.merge([r,g,b])  
+	plt.imshow(img2)
+	# plt.imshow(line_image, cmap = plt.cm.gray )
 	plt.title("line img")
 
 
@@ -491,15 +484,50 @@ def histogram_analy(  image_file ):
 	# plt.title("Y histogram")
 	plt.show()
 
-	# cv2.imshow('result', result_image )
-	# while True:
-	# 	key = cv2.waitKey(0)
-	# 	if key == 27: # ESC key: quit program
-	# 		break
-	# 	elif key == ord('I') or key == ord('i'): # toggle fullscreen
-	# 		zmcRobot.print_position()
+	cv2.imshow('result', result_image )
+    # cv2.putText(img, help_text, (11, 20), font,
+    #      1.0, (32, 32, 32), 4, cv2.LINE_AA)
+ 	
+	out_path = './out_images/'
+	out_image_file = os.path.basename( image_file )
+	print( out_image_file  )
+	out_image_file = out_path + out_image_file.split('.')[0]
 
-	# zmcRobot.shutdown()
+	while True:
+		key = cv2.waitKey(0)
+		if key == 27: # ESC key: quit program
+			break
+		elif key == ord('s') or key == ord('S'): # toggle fullscreen
+			file_name = out_image_file + '-undisort.png'
+			print('save : ', file_name  )
+
+			pts = np.array( src , np.int32)
+			print( pts )
+			pts = pts.reshape((-1,1,2))
+			print( pts )
+			cv2.polylines(undis_image,[pts],True,(0,255,255))
+
+			cv2.imwrite(file_name, undis_image)
+
+			file_name = out_image_file + '-canny.png'
+			print('save : ', file_name  )
+			cv2.imwrite(file_name, canny_image)
+
+			file_name = out_image_file + '-wraped.png'
+			print('save : ', file_name  )
+			cv2.imwrite(file_name, wraped_image)
+
+			file_name = out_image_file + '-lined.png'
+			print('save : ', file_name  )
+			cv2.imwrite(file_name, line_image)
+
+			file_name = out_image_file + '-result.png'
+			print('save : ', file_name  )
+			cv2.imwrite(file_name, result_image)
+
+			# file_name = out_image_file + '-plt.png'
+			# plt.savefig(file_name )
+
 	cv2.destroyAllWindows()
 
 

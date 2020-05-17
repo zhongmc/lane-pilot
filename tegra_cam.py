@@ -16,9 +16,12 @@ import argparse
 import subprocess
 
 import cv2
-
+import numpy as np
+import pickle
 
 WINDOW_NAME = 'CameraDemo'
+
+WINDOW_NAME_UD = 'Undisort'
 
 
 def parse_args():
@@ -51,6 +54,10 @@ def parse_args():
     parser.add_argument('--file', dest='file_name',
                         help='save file name [capfile]',
                         default='capfile' )
+    parser.add_argument('--path', dest='save_path',
+                        help='save file to [path]',
+                        default='cap_images' )
+
     args = parser.parse_args()
     return args
 
@@ -106,35 +113,86 @@ def open_cam_onboard(width, height, sensor_id):
 def open_window(width, height):
     cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
     cv2.resizeWindow(WINDOW_NAME, width, height)
-    cv2.moveWindow(WINDOW_NAME, 0, 0)
+    cv2.moveWindow(WINDOW_NAME, 100, 100)
     cv2.setWindowTitle(WINDOW_NAME, 'Camera Demo for Jetson TX2/TX1')
 
+    cv2.namedWindow(WINDOW_NAME_UD, cv2.WINDOW_NORMAL)
+    cv2.resizeWindow(WINDOW_NAME_UD, width, height)
+    cv2.moveWindow(WINDOW_NAME_UD, 110 + width, 100)
+    cv2.setWindowTitle(WINDOW_NAME_UD, 'undisort image')
 
-def read_cam(cap, cap_file_name, file_counter = 1):
+
+
+def read_cam(cap, save_path, width, height, file_counter = 1):
     show_help = True
     full_scrn = False
-    names =  cap_file_name.split('.')
-
+    grid_cnt = 20
+    w_step = int( width/grid_cnt ) 
+    h_step = int( height/grid_cnt )
+    show_grid = True
     imgCnt = file_counter
-    help_text = '"Esc" to Quit, "S" to Save img "H" for show /hide this Help, "F" to Toggle Fullscreen'
+    help_text = '"Esc" to Quit, "S" to Save img "H" for show /hide this Help, "G" for grid "F" to Toggle Fullscreen'
     font = cv2.FONT_HERSHEY_PLAIN
+    src = np.float32(
+		[[5,239],
+		[98,80],  #196,160
+		[221,80], #443, 160
+		[314, 239]])
+    src = src * (width/320)
+    pts = np.array( src , np.int32)
+    print( pts )
+    pts = pts.reshape((-1,1,2))
+    print( pts )
+    calfileName = "camera_cal" + str(width) + "-" + str(height) + ".p"
+    with open(calfileName, 'rb') as f:
+        save_dict = pickle.load(f)
+        mtx = save_dict['mtx']
+        dist = save_dict['dist']
+
+    fileName = save_path + '/img' + str(width ) + '_' + str(height) + '_'
+	# image = cv2.imread(image_file)
+
     while True:
         if cv2.getWindowProperty(WINDOW_NAME, 0) < 0:
             # Check to see if the user has closed the window
             # If yes, terminate the program
             break
         _, img = cap.read() # grab the next image frame from camera
+        undis_image = cv2.undistort(img, mtx, dist, None, mtx)
+
         if show_help:
             cv2.putText(img, help_text, (11, 20), font,
                         1.0, (32, 32, 32), 4, cv2.LINE_AA)
             cv2.putText(img, help_text, (10, 20), font,
                         1.0, (240, 240, 240), 1, cv2.LINE_AA)
+        if show_grid:
+            color1 = (196,196,196)
+            color2 = (255,255,255)
+            for i in range( grid_cnt ):
+                y = (i+1)* h_step
+                x = (i+1) * w_step
+                if i == int(grid_cnt/2):
+                    color = color2
+                else:
+                    color = color1
+
+                cv2.line( img,   (0, y), (width-1, y), color, 1 )
+                cv2.line(img ,   (x, 0), (x, height-1), color, 1 )
+                cv2.line( undis_image,   (0, y), (width-1, y), color, 1 )
+                cv2.line(undis_image ,   (x, 0), (x, height-1), color, 1 )
+        
+        cv2.polylines(undis_image,[pts],True,(0,255,255))
+
         cv2.imshow(WINDOW_NAME, img)
+        cv2.imshow(WINDOW_NAME_UD, undis_image)
+
         key = cv2.waitKey(10)
         if key == 27: # ESC key: quit program
             break
         elif key == ord('H') or key == ord('h'): # toggle help message
             show_help = not show_help
+        elif key == ord('G') or key == ord('g'):
+            show_grid = not show_grid
         elif key == ord('F') or key == ord('f'): # toggle fullscreen
             full_scrn = not full_scrn
             if full_scrn:
@@ -144,7 +202,7 @@ def read_cam(cap, cap_file_name, file_counter = 1):
                 cv2.setWindowProperty(WINDOW_NAME, cv2.WND_PROP_FULLSCREEN,
                                       cv2.WINDOW_NORMAL)
         elif key == ord('S') or key == ord('s'): #save image
-            imgName =names[0]  + str(imgCnt )  + '.' + names[1]
+            imgName =  fileName  + str(imgCnt )  + '.jpg'
 
             print('save file:%s' % imgName )
             #imgName = 'test_images/calibration%s.jpg' % str(imgCnt)
@@ -175,7 +233,7 @@ def main():
         sys.exit('Failed to open camera!')
 
     open_window(args.image_width, args.image_height)
-    read_cam(cap, args.file_name )
+    read_cam(cap, args.save_path, args.image_width, args.image_height  )
 
     cap.release()
     cv2.destroyAllWindows()
