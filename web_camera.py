@@ -35,6 +35,7 @@ class WebController(tornado.web.Application):
         self.recording = False
         self.image_data = None
         self.image_timestamp = time.time()
+        self.call_back = None
 
         handlers = [
             (r"/", tornado.web.RedirectHandler, dict(url="/drive")),
@@ -63,6 +64,12 @@ class WebController(tornado.web.Application):
             self.image_timestamp  = time.time()
         return self.angle, self.throttle, self.mode, self.recording
 
+    def updateDrive(self ):
+        if self.call_back is None:
+            return
+        self.call_back( self.angle, self.throttle ) 
+        pass
+
     def shutdown(self):
         pass
 
@@ -82,6 +89,7 @@ class DriveHandler(tornado.web.RequestHandler):
         self.application.mode = data['drive_mode']
         self.application.recording = data['recording']
         print( self.application.angle,  self.application.throttle, self.application.mode )
+        self.application.updateDrive()
 
 class VideoHandler(tornado.web.RequestHandler):
     '''
@@ -91,6 +99,10 @@ class VideoHandler(tornado.web.RequestHandler):
     #     self.last_served_timestamp = time.time()
 
     async def get(self):
+        if self.application.image_data is None:
+            self.send_error(404)
+            return
+
         last_served_timestamp = time.time()
         while True:
             if last_served_timestamp < self.application.image_timestamp :

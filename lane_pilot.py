@@ -199,13 +199,21 @@ def line_of_poly( xp, yp,  y0, y1 ):
 	x0 = int( x0 )
 	return np.array([x0, y0, x1, y1] ), poly_fit, x0, k
 
+zmcRobot = ZMCRobot()
+
+def doDrive(angle, throttle ):
+	zmcRobot.drive_car(throttle, angle  )
+	pass
+
 def line_pilot( cap, width, height ):
-	with open('camera_cal_640_480.p', 'rb') as f:
+
+	cal_file = 'camera_cal' + str(width) + '-' + str(height) + '.p'
+	with open(cal_file, 'rb') as f:
 		save_dict = pickle.load(f)
 	mtx = save_dict['mtx']
 	dist = save_dict['dist']
-	zmcRobot = ZMCRobot()
 	web = WebController()
+	web.call_back = doDrive
 	t = Thread(target=web.start, args=())
 	t.daemon = True
 	t.start()
@@ -224,7 +232,13 @@ def line_pilot( cap, width, height ):
 			break #check to see if the user has closed the window
 
 		start = time()
-		_, image = cap.read() #grap the next image frame
+		ret, image = cap.read() #grap the next image frame
+		if not ret:
+			key = cv2.waitKey(20)
+			if key == 27: # ESC key: quit program
+				break
+			continue
+
 		undis_image = cv2.undistort(image, mtx, dist, None, mtx)
 		canny_image = canny( undis_image )
 		wraped_image = cv2.warpPerspective(canny_image, m, (width, height))
@@ -337,7 +351,8 @@ def main():
                                args.image_height, args.sensor_id )
 
 	if not cap.isOpened():
-		sys.exit('Failed to open camera!')
+		print( 'failed to open camera!')
+		#sys.exit('Failed to open camera!')
 	open_window(args.image_width, args.image_height)
 	line_pilot( cap,  args.image_width, args.image_height )
 	cap.release()

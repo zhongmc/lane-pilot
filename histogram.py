@@ -53,10 +53,10 @@ def perspective_transform(img):
 
 def transform_matrix_640():
 	src = np.float32(
-		[[10,479],
-		[231,100],
-		[407,100],
-		[629, 479]])
+		[[0,479],
+		[192,160],
+		[446,160],
+		[639, 479]])
 
 	dst = np.float32(
 		[[100, 479],
@@ -69,10 +69,10 @@ def transform_matrix_640():
 
 def transform_matrix_320():
 	src = np.float32(
-		[[5,239],
-		[98,80],  #196,160
-		[221,80], #443, 160
-		[314, 239]])
+		[[0, 239],
+		[96,80],  #196,160
+		[223,80], #443, 160
+		[319, 239]])
 
 	dst = np.float32(
 		[[50, 239],
@@ -380,6 +380,7 @@ def histogram_analy(  image_file ):
 	lines,  left_fit, right_fit, line_theta,  d_center   = line_fit( wraped_image )
 
 	line_image = np.zeros_like(image)
+	#画二阶拟合曲线(用10段线段)
 	if lines is not None:
 		cnt = int(height / 10)
 		ploty = np.linspace(0,  height -1, cnt  )
@@ -419,6 +420,9 @@ def histogram_analy(  image_file ):
 
 #	combo_image = cv2.addWeighted(undis_image, 0.8, line_image, 1, 1)
 
+	pts = np.array( src , np.int32)
+	pts = pts.reshape((-1,1,2))
+
 
 
 	plt.subplot(231)
@@ -445,6 +449,9 @@ def histogram_analy(  image_file ):
 
 
 	plt.subplot(235)
+
+	cv2.polylines(result_image,[pts],True,(255,255,255))
+
 	b,g,r = cv2.split(result_image)  
 	img2 = cv2.merge([r,g,b])  
 	plt.imshow(img2)
@@ -500,13 +507,7 @@ def histogram_analy(  image_file ):
 		elif key == ord('s') or key == ord('S'): # toggle fullscreen
 			file_name = out_image_file + '-undisort.png'
 			print('save : ', file_name  )
-
-			pts = np.array( src , np.int32)
-			print( pts )
-			pts = pts.reshape((-1,1,2))
-			print( pts )
 			cv2.polylines(undis_image,[pts],True,(0,255,255))
-
 			cv2.imwrite(file_name, undis_image)
 
 			file_name = out_image_file + '-canny.png'

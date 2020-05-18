@@ -40,6 +40,9 @@ def parse_args():
     parser.add_argument('--usb', dest='use_usb',
                         help='use USB webcam (remember to also set --vid)',
                         action='store_true')
+    parser.add_argument('--dist', dest='undisort',
+                        help='show undisort window as well',
+                        action='store_true')
     parser.add_argument('--vid', dest='video_dev',
                         help='device # of USB webcam (/dev/video?) [1]',
                         default=1, type=int)
@@ -110,16 +113,17 @@ def open_cam_onboard(width, height, sensor_id):
     return cv2.VideoCapture(gst_str, cv2.CAP_GSTREAMER)
 
 
-def open_window(width, height):
+def open_window(width, height, undisort ):
     cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
     cv2.resizeWindow(WINDOW_NAME, width, height)
     cv2.moveWindow(WINDOW_NAME, 100, 100)
     cv2.setWindowTitle(WINDOW_NAME, 'Camera Demo for Jetson TX2/TX1')
 
-    cv2.namedWindow(WINDOW_NAME_UD, cv2.WINDOW_NORMAL)
-    cv2.resizeWindow(WINDOW_NAME_UD, width, height)
-    cv2.moveWindow(WINDOW_NAME_UD, 110 + width, 100)
-    cv2.setWindowTitle(WINDOW_NAME_UD, 'undisort image')
+    if undisort :
+        cv2.namedWindow(WINDOW_NAME_UD, cv2.WINDOW_NORMAL)
+        cv2.resizeWindow(WINDOW_NAME_UD, width, height)
+        cv2.moveWindow(WINDOW_NAME_UD, 110 + width, 100)
+        cv2.setWindowTitle(WINDOW_NAME_UD, 'undisort image')
 
 
 
@@ -133,23 +137,25 @@ def read_cam(cap, save_path, width, height, file_counter = 1):
     imgCnt = file_counter
     help_text = '"Esc" to Quit, "S" to Save img "H" for show /hide this Help, "G" for grid "F" to Toggle Fullscreen'
     font = cv2.FONT_HERSHEY_PLAIN
-    src = np.float32(
-		[[5,239],
-		[98,80],  #196,160
-		[221,80], #443, 160
-		[314, 239]])
-    src = src * (width/320)
-    pts = np.array( src , np.int32)
-    print( pts )
-    pts = pts.reshape((-1,1,2))
-    print( pts )
-    calfileName = "camera_cal" + str(width) + "-" + str(height) + ".p"
-    with open(calfileName, 'rb') as f:
-        save_dict = pickle.load(f)
-        mtx = save_dict['mtx']
-        dist = save_dict['dist']
 
-    fileName = save_path + '/img' + str(width ) + '_' + str(height) + '_'
+    if undisort :
+        src = np.float32(
+            [[0,479],
+            [192,160],  #196,160
+            [446,160], #443, 160
+            [639, 479]])
+        src = src * (width/640)
+        pts = np.array( src , np.int32)
+        print( pts )
+        pts = pts.reshape((-1,1,2))
+        print( pts )
+        calfileName = "camera_cal" + str(width) + "-" + str(height) + ".p"
+        with open(calfileName, 'rb') as f:
+            save_dict = pickle.load(f)
+            mtx = save_dict['mtx']
+            dist = save_dict['dist']
+
+    fileName = save_path + '/img' + str(width ) + '-' + str(height) + '-'
 	# image = cv2.imread(image_file)
 
     while True:
@@ -158,7 +164,9 @@ def read_cam(cap, save_path, width, height, file_counter = 1):
             # If yes, terminate the program
             break
         _, img = cap.read() # grab the next image frame from camera
-        undis_image = cv2.undistort(img, mtx, dist, None, mtx)
+        
+        if undisort :
+            undis_image = cv2.undistort(img, mtx, dist, None, mtx)
 
         if show_help:
             cv2.putText(img, help_text, (11, 20), font,
@@ -171,22 +179,23 @@ def read_cam(cap, save_path, width, height, file_counter = 1):
             for i in range( grid_cnt ):
                 y = (i+1)* h_step
                 x = (i+1) * w_step
-                if i == int(grid_cnt/2):
+                if i == int(grid_cnt/2 - 1):
                     color = color2
                 else:
                     color = color1
 
                 cv2.line( img,   (0, y), (width-1, y), color, 1 )
                 cv2.line(img ,   (x, 0), (x, height-1), color, 1 )
-                cv2.line( undis_image,   (0, y), (width-1, y), color, 1 )
-                cv2.line(undis_image ,   (x, 0), (x, height-1), color, 1 )
+                if undisort :
+                    cv2.line( undis_image,   (0, y), (width-1, y), color, 1 )
+                    cv2.line(undis_image ,   (x, 0), (x, height-1), color, 1 )
         
-        cv2.polylines(undis_image,[pts],True,(0,255,255))
-
+        if undisort :
+            cv2.polylines(undis_image,[pts],True,(0,255,255))
+            cv2.imshow(WINDOW_NAME_UD, undis_image)
+        
         cv2.imshow(WINDOW_NAME, img)
-        cv2.imshow(WINDOW_NAME_UD, undis_image)
-
-        key = cv2.waitKey(10)
+            key = cv2.waitKey(10)
         if key == 27: # ESC key: quit program
             break
         elif key == ord('H') or key == ord('h'): # toggle help message
@@ -232,8 +241,8 @@ def main():
     if not cap.isOpened():
         sys.exit('Failed to open camera!')
 
-    open_window(args.image_width, args.image_height)
-    read_cam(cap, args.save_path, args.image_width, args.image_height  )
+    open_window(args.image_width, args.image_height , args.undisort )
+    read_cam(cap, args.save_path, args.image_width, args.image_height,  , args.undisort  )
 
     cap.release()
     cv2.destroyAllWindows()
