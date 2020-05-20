@@ -101,7 +101,7 @@ def open_cam_onboard(width, height, sensor_id):
         gst_str = ('nvarguscamerasrc '
                    'sensor-id={} ! '
                    'video/x-raw(memory:NVMM), '
-                   'width=(int)3264, height=(int)1848, '
+                   'width=(int)3264, height=(int)2464, '
                    'format=(string)NV12, framerate=(fraction)20/1 ! '
                    'nvvidconv flip-method=0 ! '
                    'video/x-raw, width=(int){}, height=(int){}, '
@@ -127,7 +127,7 @@ def open_window(width, height, undisort ):
 
 
 
-def read_cam(cap, save_path, width, height, file_counter = 1):
+def read_cam(cap, save_path, width, height, undisort, file_counter = 1):
     show_help = True
     full_scrn = False
     grid_cnt = 20
@@ -195,7 +195,7 @@ def read_cam(cap, save_path, width, height, file_counter = 1):
             cv2.imshow(WINDOW_NAME_UD, undis_image)
         
         cv2.imshow(WINDOW_NAME, img)
-            key = cv2.waitKey(10)
+        key = cv2.waitKey(10)
         if key == 27: # ESC key: quit program
             break
         elif key == ord('H') or key == ord('h'): # toggle help message
@@ -242,7 +242,7 @@ def main():
         sys.exit('Failed to open camera!')
 
     open_window(args.image_width, args.image_height , args.undisort )
-    read_cam(cap, args.save_path, args.image_width, args.image_height,  , args.undisort  )
+    read_cam(cap, args.save_path, args.image_width, args.image_height, args.undisort  )
 
     cap.release()
     cv2.destroyAllWindows()

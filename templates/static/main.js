@@ -12,6 +12,7 @@ var driveHandler = new function() {
                                   }
                           },
                   'brakeOn': true,
+                  'pilotOn':false,
                   'recording': false,
                   'driveMode': "user",
                   'pilot': 'None',
@@ -104,6 +105,10 @@ var driveHandler = new function() {
 
       $('#brake_button').click(function() {
         toggleBrake();
+      });
+
+      $('#pilot_button').click(function(){
+        togglePilot();
       });
 
       $('input[type=radio][name=controlMode]').change(function() {
@@ -214,6 +219,18 @@ var driveHandler = new function() {
           .addClass('btn-info').end()
       }
 
+      if (state.pilotOn) {
+        $('#pilot_button')
+          .html('Stop Pilot (p)')
+          .removeClass('btn-info')
+          .addClass('btn-warning').end()
+      } else {
+        $('#pilot_button')
+          .html('Start Pilot (r)')
+          .removeClass('btn-warning')
+          .addClass('btn-info').end()
+      }
+
       if (state.brakeOn) {
         $('#brake_button')
           .html('Start Vehicle')
@@ -265,6 +282,7 @@ var driveHandler = new function() {
         data = JSON.stringify({ 'angle': state.tele.user.angle,
                                 'throttle':state.tele.user.throttle,
                                 'drive_mode':state.driveMode,
+                                'pilotOn':state.pilotOn,
                                 'recording': state.recording})
         console.log(data)
         $.post(driveURL, data)
@@ -417,8 +435,13 @@ var driveHandler = new function() {
     };
 
     var toggleRecording = function(){
-      state.recording = !state.recording
+      state.recording = !state.recording;
       postDrive()
+    };
+
+    var togglePilot = function(){
+      state.pilotOn = !state.pilotOn;
+      postDrive();
     };
 
     var toggleBrake = function(){

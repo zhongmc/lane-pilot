@@ -51,11 +51,17 @@ def perspective_transform(img):
 	warped = cv2.warpPerspective(img, m, img_size, flags=cv2.INTER_LINEAR)
 	return warped, m_inv
 
+	# src = np.float32(
+	# 	[[0,479],
+	# 	[192,160],
+	# 	[446,160],
+	# 	[639, 479]])
+
 def transform_matrix_640():
 	src = np.float32(
 		[[0,479],
-		[192,160],
-		[446,160],
+		[194,160],
+		[452,160],
 		[639, 479]])
 
 	dst = np.float32(
@@ -71,14 +77,21 @@ def transform_matrix_320():
 	src = np.float32(
 		[[0, 239],
 		[96,80],  #196,160
-		[223,80], #443, 160
+		[225,80], #443, 160 223
 		[319, 239]])
 
+	# dst = np.float32(
+	# 	[[50, 239],
+	# 	[50, 0],
+	# 	[269, 0],
+	# 	[269, 239]])
+
 	dst = np.float32(
-		[[50, 239],
-		[50, 0],
-		[269, 0],
-		[269, 239]])
+		[[0, 239],
+		[0, 0],
+		[319, 0],
+		[319, 239]])
+
 	m = cv2.getPerspectiveTransform(src, dst)
 	m_inv = cv2.getPerspectiveTransform(dst, src)
 	return m, m_inv, src
@@ -364,6 +377,7 @@ def histogram_analy(  image_file ):
 	width = image.shape[1]
 	cal_file = 'camera_cal' + str(width) + '-' + str(height) + '.p'
 	with open(cal_file, 'rb') as f:
+	# with open('camera_cal640-480.p', 'rb') as f:
 		save_dict = pickle.load(f)
 	mtx = save_dict['mtx']
 	dist = save_dict['dist']
@@ -376,6 +390,7 @@ def histogram_analy(  image_file ):
 
 	wraped_image = cv2.warpPerspective(canny_image, m, (width, height), flags=cv2.INTER_LINEAR)
 
+	org_wraped_image =  cv2.warpPerspective(undis_image, m, (width, height), flags=cv2.INTER_LINEAR)
 	# lines,  target_line, line_theta,  d_center   = hough_lines( wraped_image )
 	lines,  left_fit, right_fit, line_theta,  d_center   = line_fit( wraped_image )
 
@@ -517,6 +532,9 @@ def histogram_analy(  image_file ):
 			file_name = out_image_file + '-wraped.png'
 			print('save : ', file_name  )
 			cv2.imwrite(file_name, wraped_image)
+
+			file_name = out_image_file + '-wraped0.png'
+			cv2.imwrite(file_name, org_wraped_image)
 
 			file_name = out_image_file + '-lined.png'
 			print('save : ', file_name  )
