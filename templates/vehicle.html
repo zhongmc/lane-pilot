@@ -123,7 +123,10 @@
       </div><!-- end right col -->
     </div>
     <div id="joystick-padding"></div>
-    
+
+    <p>Robot track</p>
+    <canvas id="track_canvas"   height="600" style="width:100%;"> </canvas>
+
   </div> <!-- END Container -->
   <footer class="footer" id="vehicle_footer">
     <div class="container">
@@ -173,6 +176,59 @@
     console.log( "document ready!" );
     driveHandler.load()
   });
+
+  window.onload = function(){
+      let canvas = document.getElementById("track_canvas");
+      canvas.width = canvas.parentNode.offsetWidth;
+      draw_robot( 0.2, 1,  0.5);
+  };
+
+
+  function draw_robot(x0, y0, theta ){
+    let canvas = document.getElementById("track_canvas");
+    let ctx = canvas.getContext('2d');
+    w = canvas.width;
+    h = canvas.height;
+    var scale = 200;
+
+    x0 = scale * x0;
+    y0 = scale * y0;
+
+    // console.log("canvas: " + w +', ' + h );
+    rbtw = 40;
+    rbth = 24;
+    ww = 16;
+    wh = 8;
+
+    // body
+    ctx.clearRect(0, 0, w, h);
+    ctx.translate(w/2 + x0, h/2 - y0 );
+    ctx.rotate( -theta );
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "rgb(0,126,216)";
+    ctx.strokeRect( -rbtw/2, -rbth/2, rbtw, rbth );
+
+    //wheel 
+    ctx.strokeStyle = "rgb(0,196,0)";
+    ctx.fillStyle = "rgb(192,192,192)";
+    ctx.fillRect(-ww/4, -rbth/2 - 3-wh, ww, wh );
+    ctx.fillRect(-ww/4, rbth/2 + 3, ww, wh);
+
+    //decorate
+    ctx.beginPath();
+    ctx.lineWidth = 2;
+    ctx.moveTo(-10, 0);
+    ctx.lineTo(10, 0);
+
+    ctx.moveTo(0, -5);
+    ctx.lineTo( 0, 5);
+    ctx.stroke();
+
+    ctx.rotate(theta );
+    ctx.translate( -(w/2 + x0), -(h/2 - y0 ));
+
+  }
+
 </script>
 
 {% end %}

@@ -11,11 +11,11 @@ import math
 import argparse
 
 from zmcrobot import ZMCRobot
-from web_camera import WebController
+from web_camera import WebController, open_cam_onboard
 #from combined_thresh import combined_thresh
 #from line_fit import line_fit, viz2, calc_curve, final_viz
 
-from lane_detector import line_fit, canny, draw_lines, open_cam_onboard,transform_matrix_640,transform_matrix_320
+from lane_detector import line_fit, canny, draw_lines, transform_matrix_640,transform_matrix_320
 import sys
 from time import time
 from threading import Thread
@@ -49,7 +49,12 @@ class LanePilot():
 	def drive_car(self, angle, throttle, pilot ):
 		self.pilotOn = pilot
 		if self.pilotOn == False:
-			robot.drive_car(throttle, angle  )
+			self.robot.drive_car(throttle, angle  )
+		ret = {}
+		ret['x'] = self.robot.x
+		ret['y'] = self.robot.y
+		ret['theta'] = self.robot.theta
+		return ret
 
 	def line_pilot(self, cap, width, height ):
 		cal_file = 'camera_cal' + str(width) + '-' + str(height) + '.p'

@@ -35,6 +35,10 @@ var driveHandler = new function() {
     var driveURL = ""
     var vehicleURL = ""
 
+    var lastFailedTime  = 0;
+    var netFailed = false
+    var robotState = null
+
     this.load = function() {
       driveURL = '/drive'
       vehicleURL = '/drive'
@@ -278,14 +282,39 @@ var driveHandler = new function() {
 
     var postDrive = function() {
 
+        if( netFailed )
+        {
+          var curTime = (new Date()).valueOf();
+          if( curTime - lastFailedTime  >10000 )
+          {
+              netFailed = false;
+          }
+          else 
+          {
+              console.log("net failed, try later!");
+              return;
+          }
+        }
+
         //Send angle and throttle values
         data = JSON.stringify({ 'angle': state.tele.user.angle,
                                 'throttle':state.tele.user.throttle,
                                 'drive_mode':state.driveMode,
                                 'pilotOn':state.pilotOn,
                                 'recording': state.recording})
-        console.log(data)
-        $.post(driveURL, data)
+        // console.log(data)
+        $.post(driveURL, data, function( retData ){
+            console.log( retData );
+            if( robotState == null ||  robotState.x != retData.x || robotState.y != retData.y || robotState.theta != retData.theta )
+            {
+                robotState = retData;
+                draw_robot(retData.x,  retData.y, retData.theta );
+            }
+        }).fail( function(){
+          console.log( "post drive failed!" );
+          netFailed = true;
+          lastFailedTime =  (new Date()).valueOf();
+        });
         updateUI()
     };
 
@@ -298,7 +327,15 @@ var driveHandler = new function() {
        return percentage * (number > 0 ? 1 : -1);
     }
 
+    function pilotLoop() {
+          setTimeout(function () {
+            postDrive()
 
+          if (state.pilotOn ) {
+            pilotLoop();
+          }
+      }, 200)
+    }
 
     function gamePadLoop() {
       setTimeout(gamePadLoop,100);
@@ -351,7 +388,7 @@ var driveHandler = new function() {
           if (joystickLoopRunning && state.controlMode == "joystick") {
              joystickLoop();
           }
-       }, 100)
+       }, 200)
     }
 
     // Control throttle and steering with device orientation
@@ -442,6 +479,8 @@ var driveHandler = new function() {
     var togglePilot = function(){
       state.pilotOn = !state.pilotOn;
       postDrive();
+      if( state.polotOn )
+        pilotLoop(); //取robot位置
     };
 
     var toggleBrake = function(){

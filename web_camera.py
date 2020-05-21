@@ -17,6 +17,7 @@ from threading import Thread
 import sys
 #from time import time
 import time
+import json
 
 
 class WebController(tornado.web.Application):
@@ -67,8 +68,9 @@ class WebController(tornado.web.Application):
 
     def updateDrive(self ):
         if self.pilot is None:
-            return
-        self.pilot.drive_car( -self.angle, self.throttle , self.pilotOn) 
+            return None
+        ret = self.pilot.drive_car( -self.angle, self.throttle , self.pilotOn) 
+        return ret
         pass
 
     def shutdown(self):
@@ -90,8 +92,11 @@ class DriveHandler(tornado.web.RequestHandler):
         self.application.mode = data['drive_mode']
         self.application.recording = data['recording']
         self.application.pilotOn = data['pilotOn']
-        print( self.application.angle,  self.application.throttle, self.application.mode, self.application.pilotOn )
-        self.application.updateDrive()
+#        print( self.application.angle,  self.application.throttle, self.application.mode, self.application.pilotOn )
+        ret =  self.application.updateDrive()
+        self.set_header('Content-Type', 'application/json; charset=UTF-8')
+        self.write(json.dumps( ret ))
+        self.finish()
 
 class VideoHandler(tornado.web.RequestHandler):
     '''
