@@ -56,6 +56,10 @@ class LanePilot():
 		ret['theta'] = self.robot.theta
 		return ret
 
+#to do capture a large image???
+	def capture_image(self):
+		return self.image_data
+
 	def line_pilot(self, cap, width, height ):
 		cal_file = 'camera_cal' + str(width) + '-' + str(height) + '.p'
 		with open(cal_file, 'rb') as f:
@@ -81,6 +85,8 @@ class LanePilot():
 					break
 				continue
 			undis_image = cv2.undistort(image, mtx, dist, None, mtx)
+			self.image_data = undis_image
+
 			canny_image = canny( undis_image )
 			wraped_image = cv2.warpPerspective(canny_image, m, (width, height))
 

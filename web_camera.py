@@ -35,6 +35,7 @@ class WebController(tornado.web.Application):
         self.mode = 'user'
         self.recording = False
         self.image_data = None
+        self.cap_image_data = None
         self.pilotOn = False
         self.image_timestamp = time.time()
         self.pilot = None
@@ -43,6 +44,7 @@ class WebController(tornado.web.Application):
             (r"/", tornado.web.RedirectHandler, dict(url="/drive")),
             (r"/drive", DriveHandler),
             (r"/video",VideoHandler),
+            (r"/capture", CaptureHandler),
             (r"/static/(.*)", tornado.web.StaticFileHandler, {"path": self.static_file_path}),
             ]
         settings = {'debug': True}
@@ -65,6 +67,20 @@ class WebController(tornado.web.Application):
             self.image_data  =  bytes(i.data)
             self.image_timestamp  = time.time()
         return self.angle, self.throttle, self.mode, self.recording
+
+    def set_cap_image( self, image = None):
+        if image is None:
+            return
+        r, i = cv2.imencode('.jpg', image )
+        if r :
+            self.cap_image_data  =  bytes(i.data)
+
+    def capture_image( self ):
+        if self.pilot is None:
+            return
+        img = self.pilot.capture_image()
+        self.cap_image_data = None
+        self.set_cap_image( img )
 
     def updateDrive(self ):
         if self.pilot is None:
@@ -97,6 +113,24 @@ class DriveHandler(tornado.web.RequestHandler):
         self.set_header('Content-Type', 'application/json; charset=UTF-8')
         self.write(json.dumps( ret ))
         self.finish()
+
+class CaptureHandler(tornado.web.RequestHandler):
+    def get(self):
+        arg = self.get_query_argument('action', '')
+        if arg == 'img':
+            if self.application.cap_image_data  is None:
+                self.send_error(404)
+                return
+            self.set_header("Context-Type", "image/jpg")
+            self.set_header("Content-Disposition", 'filename="capturedImage.jpg"')
+            self.write(self.application.cap_image_data)
+
+        else:
+            ret = self.application.capture_image()
+            self.set_header('Content-Type', 'text/html; charset=UTF-8')
+            content = '<img src="/capture?action=img&id=%d" alt="cap image"></img>' % int(time.time()*1000)
+            self.write(content )
+            self.finish()
 
 class VideoHandler(tornado.web.RequestHandler):
     '''

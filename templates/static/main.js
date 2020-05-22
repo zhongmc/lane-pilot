@@ -34,6 +34,7 @@ var driveHandler = new function() {
     var vehicle_id = ""
     var driveURL = ""
     var vehicleURL = ""
+    var captureURL = ""
 
     var lastFailedTime  = 0;
     var netFailed = false
@@ -42,6 +43,7 @@ var driveHandler = new function() {
     this.load = function() {
       driveURL = '/drive'
       vehicleURL = '/drive'
+      captureURL = '/capture?action=cap'
 
       setBindings()
 
@@ -113,6 +115,12 @@ var driveHandler = new function() {
 
       $('#pilot_button').click(function(){
         togglePilot();
+      });
+
+      $('#capture_button').click( function(){
+      
+        captureImage();
+
       });
 
       $('input[type=radio][name=controlMode]').change(function() {
@@ -278,6 +286,17 @@ var driveHandler = new function() {
       }
 
       //drawLine(state.tele.user.angle, state.tele.user.throttle)
+    };
+
+    var getCaptureImage = function(){
+
+      $.get(captureURL, function(data){
+          $("#captureImage").html(data);
+
+          $('#captureImageDialog').modal('show');
+      }).fail(function(){
+        alert('failed to capture!');
+      }); 
     };
 
     var postDrive = function() {
@@ -481,6 +500,10 @@ var driveHandler = new function() {
       postDrive();
       if( state.polotOn )
         pilotLoop(); //取robot位置
+    };
+
+    var   captureImage = function(){
+        getCaptureImage();
     };
 
     var toggleBrake = function(){
