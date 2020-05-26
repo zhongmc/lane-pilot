@@ -9,13 +9,15 @@ import matplotlib.image as mpimg
 import os
 import math
 import argparse
+import datetime
 
 from zmcrobot import ZMCRobot
 from web_camera import WebController, open_cam_onboard
-#from combined_thresh import combined_thresh
+
+#from combined_thresh import combined_thresh, magthresh
 #from line_fit import line_fit, viz2, calc_curve, final_viz
 
-from lane_detector import line_fit, canny, draw_lines, transform_matrix_640,transform_matrix_320
+from lane_detector import line_fit, canny, sobel, draw_lines, transform_matrix_640,transform_matrix_320, horizen_lines
 import sys
 from time import time
 from threading import Thread
@@ -28,11 +30,13 @@ class LanePilot():
 		self.pilotOn = False
 		self.robot = None
 		self.web = None
+		self.capCnt = 1
+		self.onTurnBack = False
 
-	def start(self, width, height, sensor_id, port=8887):
+	def start(self, width, height, sensor_id, port, serial_port, algorithm):
 		''' Start the lane pilot server  '''
-		self.robot = ZMCRobot()
-		self.web = WebController()
+		self.robot = ZMCRobot(serial_port )
+		self.web = WebController( port  )
 
 		self.web.pilot = self
 		# self.web.start( port )
@@ -42,14 +46,20 @@ class LanePilot():
 			print( 'failed to open camera!')
 			return
 		
-		self.line_pilot( cap,  width, height )
+		self.line_pilot( cap,  width, height, algorithm )
 		cap.release()
 		cv2.destroyAllWindows()
 
 	def drive_car(self, angle, throttle, pilot ):
+		if pilot == False and self.pilotOn == True :
+			print('stop line pilot! ')
+
 		self.pilotOn = pilot
 		if self.pilotOn == False:
 			self.robot.drive_car(throttle, angle  )
+		else:
+			print('start lane pilot...')
+
 		ret = {}
 		ret['x'] = self.robot.x
 		ret['y'] = self.robot.y
@@ -58,10 +68,18 @@ class LanePilot():
 
 #to do capture a large image???
 	def capture_image(self):
+		tn = datetime.datetime.now()
+		filename = 'cap_imgs/img' + tn.strftime('%m-%d-%H%M%S.jpg')
+		# fileName = self.capFile + str( self.capCnt ) + '.jpg'
+		self.capCnt = self.capCnt + 1
+		cv2.imwrite(filename, self.image_data, [int(cv2.IMWRITE_JPEG_QUALITY),80])
+		print('capture img:', filename)
 		return self.image_data
 
-	def line_pilot(self, cap, width, height ):
-		cal_file = 'camera_cal' + str(width) + '-' + str(height) + '.p'
+	def line_pilot(self, cap, width, height, algorithm ):
+		# ncamera_cal for 3264*2464
+		# camera_cal  for 3264*1848
+		cal_file = 'ncamera_cal' + str(width) + '-' + str(height) + '.p'
 		with open(cal_file, 'rb') as f:
 			save_dict = pickle.load(f)
 		mtx = save_dict['mtx']
@@ -80,36 +98,60 @@ class LanePilot():
 			start = time()
 			ret, image = cap.read() #grap the next image frame
 			if not ret:
-				key = cv2.waitKey(20)
+				key = cv2.waitKey(1)
 				if key == 27: # ESC key: quit program
 					break
 				continue
 			undis_image = cv2.undistort(image, mtx, dist, None, mtx)
 			self.image_data = undis_image
 
-			canny_image = canny( undis_image )
+			if algorithm == 'sobel':
+				canny_image = sobel( undis_image )
+			else:
+				canny_image = canny( undis_image )
+
+			#canny_image = combined_thresh(undis_image)
 			wraped_image = cv2.warpPerspective(canny_image, m, (width, height))
 
 			lines,  left_fit, right_fit, line_theta,  d_center   = line_fit( wraped_image )
 			line_image = np.zeros_like(image)
-			if lines is not None:
-				draw_lines(line_image, lines, left_fit, right_fit, height )
-				ctrl_theta = np.pi/2 + line_theta
-				if self.pilotOn :
-					self.robot.drive_car(0.06, ctrl_theta )
+
+			if self.onTurnBack :
+				label = 'turn back...'
+				if self.robot.turn_back_ok():
+					self.onTurnBack = False
+					label = 'turn back OK'
 			else:
-				if self.pilotOn:
-					self.robot.drive_car(0, 0 ) # stop the car when none line 
+				if lines is not None:
+					draw_lines(line_image, lines, left_fit, right_fit, height )
+					ctrl_theta = np.pi/2 + line_theta
+					if self.pilotOn :
+						self.robot.drive_car(0.07, -0.8*ctrl_theta )
+					label = 'w: %.3f dc: %d;t:%.2f' % (ctrl_theta, d_center, elapsed*1000)
+
+				else:
+					if self.pilotOn:
+						self.robot.drive_car(0, 0 ) # stop the car when none line 
+					label = 'failed to detect'
+
+				hlines = horizen_lines( wraped_image)
+				if hlines >= 4 : #stop lines turn arround
+					self.robot.turn_back()
+					self.onTurnBack = True
+					label = 'Stop and turn'
+			
 		# Warp the blank back to original image space using inverse perspective matrix (Minv)
 			newwarp = cv2.warpPerspective(line_image, m_inv, (width, height))
 	# Combine the result with the original image
 			result_image = cv2.addWeighted(undis_image, 1, newwarp, 0.5, 0)
-			label = 'w: %.3f dc: %d;t:%.2f' % (ctrl_theta, d_center, elapsed*1000)
 			result_image = cv2.putText(result_image, label, (30,40), 0, 0.5, (128,0,128), 2, cv2.LINE_AA)
 			self.web.update_image( result_image )
 			elapsed = time() - start
 #		cv2.imshow(WINDOW_NAME, result_image )
-			key = cv2.waitKey(10)
+			# tw = int( 100 - elapsed )
+			# if tw <= 0 :
+			# 	tw = 1
+			key = cv2.waitKey(1)
 			if key == 27: # ESC key: quit program
 				break
 		self.robot.shutdown()
@@ -117,39 +159,38 @@ class LanePilot():
 
 
 def parse_args():
-    # Parse input arguments
-    desc = 'Capture and display live camera video on Jetson TX2/TX1'
-    parser = argparse.ArgumentParser(description=desc)
-    parser.add_argument('--rtsp', dest='use_rtsp',
-                        help='use IP CAM (remember to also set --uri)',
+	# Parse input arguments
+	desc = 'Lane pilot robot'
+	parser = argparse.ArgumentParser(description=desc)
+	parser.add_argument('--rtsp', dest='use_rtsp',
+						help='use IP CAM (remember to also set --uri)',
                         action='store_true')
-    parser.add_argument('--uri', dest='rtsp_uri',
+	parser.add_argument('--uri', dest='rtsp_uri',
                         help='RTSP URI, e.g. rtsp://192.168.1.64:554',
                         default=None, type=str)
-    parser.add_argument('--latency', dest='rtsp_latency',
+	parser.add_argument('--latency', dest='rtsp_latency',
                         help='latency in ms for RTSP [200]',
                         default=200, type=int)
-    parser.add_argument('--usb', dest='use_usb',
+	parser.add_argument('--usb', dest='use_usb',
                         help='use USB webcam (remember to also set --vid)',
                         action='store_true')
-    parser.add_argument('--vid', dest='video_dev',
+	parser.add_argument('--vid', dest='video_dev',
                         help='device # of USB webcam (/dev/video?) [1]',
                         default=1, type=int)
-    parser.add_argument('--sensor_id', dest='sensor_id', help='sensor id for csi camera 0/1', default=0)
-
-    parser.add_argument('--width', dest='image_width',
-                        help='image width [1920]',
+	parser.add_argument('--sensor_id', dest='sensor_id', help='sensor id for csi camera 0/1', default=0)
+	parser.add_argument('--width', dest='image_width',
+                        help='image width [320]',
                         default=320, type=int)
-    parser.add_argument('--height', dest='image_height',
-                        help='image height [1080]',
+	parser.add_argument('--height', dest='image_height',
+                        help='image height [240]',
                         default=240, type=int)
-    parser.add_argument('--file', dest='file_name',
-                        help='save file name [capfile]',
-                        default='capfile' )
-    args = parser.parse_args()
-    return args
-
-
+	parser.add_argument('--port', dest='port',
+                        help='web ctrl listen port [8887]',
+                        default=8887, type=int)
+	parser.add_argument('--serial', dest='serial_port', help='robot serial port [/dev/ttyACM0]', default='/dev/ttyACM0' )
+	parser.add_argument('--algs', dest='algorithm', help='algorithm used to detect the line[canny,  sobel]',  default='canny')
+	args = parser.parse_args( )
+	return args
 
 def main():
 	args = parse_args()
@@ -157,8 +198,8 @@ def main():
 	print(args)
 	print('OpenCV version: {}'.format(cv2.__version__))
 	pilot = LanePilot()
-	pilot.start(args.image_width, args.image_height, args.sensor_id)
-
+	pilot.start(args.image_width, args.image_height, args.sensor_id, args.port, args.serial_port, args.algorithm)
+	
 if __name__ == '__main__':
 	main()
 

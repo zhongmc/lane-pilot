@@ -21,15 +21,14 @@ import json
 
 
 class WebController(tornado.web.Application):
-    def __init__(self):
+    def __init__(self, port = 8887):
         ''' 
         Create and publish variables needed on many of 
         the web handlers.
         '''
-        print('Starting Donkey Server...')
         this_dir = os.path.dirname(os.path.realpath(__file__))
         self.static_file_path = os.path.join(this_dir, 'templates', 'static')
-        
+        self.port = port
         self.angle = 0.0
         self.throttle = 0.0
         self.mode = 'user'
@@ -50,11 +49,11 @@ class WebController(tornado.web.Application):
         settings = {'debug': True}
         super().__init__(handlers, **settings)
 
-    def start(self, port=8887):
+    def start(self ):
         ''' Start the tornado webserver. '''
         asyncio.set_event_loop(asyncio.new_event_loop())
-        print(port)
-        self.port = int(port)
+        print('Starting Robot Web control Server...')
+        print('Listen on: ',  self.port)
         self.listen(self.port)
         tornado.ioloop.IOLoop.instance().start()
        
@@ -87,7 +86,7 @@ class WebController(tornado.web.Application):
             return None
         ret = self.pilot.drive_car( -self.angle, self.throttle , self.pilotOn) 
         return ret
-        pass
+
 
     def shutdown(self):
         pass
@@ -178,7 +177,7 @@ def open_cam_onboard(width, height, sensor_id):
 	gst_str = ('nvarguscamerasrc '
                    'sensor-id={} ! '
                    'video/x-raw(memory:NVMM), '
-                   'width=(int)3264, height=(int)1848, '
+                   'width=(int)3264, height=(int)2464, '
                    'format=(string)NV12, framerate=(fraction)20/1 ! '
                    'nvvidconv flip-method=0 ! '
                    'video/x-raw, width=(int){}, height=(int){}, '

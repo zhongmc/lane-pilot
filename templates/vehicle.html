@@ -235,7 +235,7 @@
     let ctx = canvas.getContext('2d');
     w = canvas.width;
     h = canvas.height;
-    var scale = 200;
+    var scale = 100;
     addRobotPos(x0, y0);
 
     ctx.clearRect(0, 0, w, h);
@@ -244,7 +244,7 @@
 //draw the robot track
 
   ctx.beginPath();
-  ctx.lineWidth = 2;
+  ctx.lineWidth = 1;
   px0 = w/2 + scale * positions[0][0];
   py0 = h/2 - scale * positions[0][1];
   ctx.moveTo( px0, h/2-py0 );
@@ -261,15 +261,15 @@
     y0 = scale * y0;
 
     // console.log("canvas: " + w +', ' + h );
-    rbtw = 40;
-    rbth = 24;
-    ww = 16;
-    wh = 8;
+    rbtw = 20;
+    rbth = 12;
+    ww = 9;
+    wh = 4;
 
     // body
     ctx.translate(w/2 + x0, h/2 - y0 );
     ctx.rotate( -theta );
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 2;
     ctx.strokeStyle = "rgb(0,126,216)";
     ctx.strokeRect( -rbtw/2, -rbth/2, rbtw, rbth );
 
@@ -282,11 +282,11 @@
     //decorate
     ctx.beginPath();
     ctx.lineWidth = 2;
-    ctx.moveTo(-10, 0);
-    ctx.lineTo(10, 0);
+    ctx.moveTo(-rbtw/4, 0);
+    ctx.lineTo(rbtw/4, 0);
 
-    ctx.moveTo(0, -5);
-    ctx.lineTo( 0, 5);
+    ctx.moveTo(0, -rbth/3);
+    ctx.lineTo( 0, rbth/3);
     ctx.stroke();
 
     ctx.rotate(theta );

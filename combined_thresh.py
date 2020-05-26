@@ -10,10 +10,10 @@ def abs_sobel_thresh(img, orient='x', thresh_min=20, thresh_max=100):
 	Takes an image, gradient orientation, and threshold min/max values
 	"""
 	# Convert to grayscale
-	gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+	#gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
 	# Apply x or y gradient with the OpenCV Sobel() function
 
-	gray = cv2.GaussianBlur(gray, (5,5), 0)
+	gray = cv2.GaussianBlur(img, (5,5), 0)
 
 	# and take the absolute value
 	if orient == 'x':
@@ -36,8 +36,9 @@ def mag_thresh(img, sobel_kernel=3, mag_thresh=(30, 100)):
 	for a given sobel kernel size and threshold values
 	"""
 	# Convert to grayscale
-	gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+	#gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
 	# Take both Sobel x and y gradients
+	gray = cv2.GaussianBlur(img, (5,5), 0)
 	sobelx = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=sobel_kernel)
 	sobely = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=sobel_kernel)
 	# Calculate the gradient magnitude
@@ -59,10 +60,10 @@ def dir_threshold(img, sobel_kernel=3, thresh=(0, np.pi/2)):
 	for a given sobel kernel size and threshold values
 	"""
 	# Convert to grayscale
-	gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+	#gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
 	# Calculate the x and y gradients
-	sobelx = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=sobel_kernel)
-	sobely = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=sobel_kernel)
+	sobelx = cv2.Sobel(img, cv2.CV_64F, 1, 0, ksize=sobel_kernel)
+	sobely = cv2.Sobel(img, cv2.CV_64F, 0, 1, ksize=sobel_kernel)
 	# Take the absolute value of the gradient direction,
 	# apply a threshold, and create a binary image result
 	absgraddir = np.arctan2(np.absolute(sobely), np.absolute(sobelx))
@@ -84,16 +85,44 @@ def hls_thresh(img, thresh=(100, 255)):
 	return binary_output
 
 
+def canny( image ):
+	gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+	#双边滤波，平滑去噪的同时很好得保存边沿
+	# blur = cv2.bilateralFilter(gray, 11, 17,17)
+	blur = cv2.GaussianBlur(gray, (5,5), 0)
+	canny = cv2.Canny(blur, 25, 150)
+	return canny
+
+def magthresh(img):
+	gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+	mag_bin = mag_thresh(gray, sobel_kernel=3, mag_thresh=(50, 255))
+	return mag_bin
+
 def combined_thresh(img):
-	abs_bin = abs_sobel_thresh(img, orient='x', thresh_min=20, thresh_max=185)  #50 255
-	mag_bin = mag_thresh(img, sobel_kernel=3, mag_thresh=(50, 255))
-	dir_bin = dir_threshold(img, sobel_kernel=15, thresh=(0.7, 1.3))
+	gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+	abs_bin = abs_sobel_thresh(gray, orient='x', thresh_min=20, thresh_max=185)  #50 255
+	
+	mag_bin = mag_thresh(gray, sobel_kernel=3, mag_thresh=(50, 255))
+	dir_bin = dir_threshold(gray, sobel_kernel=15, thresh=(0.7, 1.3))
+
 	hls_bin = hls_thresh(img, thresh=(170, 255))
+
+	combined = np.zeros_like(mag_bin) #np.zeros_like(dir_bin)
+	combined[(abs_bin == 1 | ((mag_bin == 1) & (dir_bin == 1))) | hls_bin == 1] = 1
+	return combined
+	#return combined, abs_bin, mag_bin, dir_bin, hls_bin  # DEBUG
+
+def combined_thresh_d(img):
+	gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+	abs_bin = abs_sobel_thresh(gray, orient='x', thresh_min=20, thresh_max=185)  #50 255
+	mag_bin = mag_thresh(gray, sobel_kernel=3, mag_thresh=(50, 255))
+	dir_bin = dir_threshold(gray, sobel_kernel=15, thresh=(0.7, 1.3))
+	hls_bin = hls_thresh(img, thresh=(120, 255)) #170 255
 
 	combined = np.zeros_like(dir_bin)
 	combined[(abs_bin == 1 | ((mag_bin == 1) & (dir_bin == 1))) | hls_bin == 1] = 1
-
-	return combined, abs_bin, mag_bin, dir_bin, hls_bin  # DEBUG
+	canny_bin  = canny( img ) 
+	return combined, abs_bin, mag_bin, dir_bin, hls_bin, canny_bin  # DEBUG
 
 
 if __name__ == '__main__':
@@ -105,28 +134,34 @@ if __name__ == '__main__':
 		sys.exit('please specify a file !')
 	
 	# with open('calibrate_camera.p', 'rb') as f:
-	with open('camera_cal_640_480.p', 'rb') as f:
+	with open('ncamera_cal640-480.p', 'rb') as f:
 		save_dict = pickle.load(f)
 	mtx = save_dict['mtx']
 	dist = save_dict['dist']
 
 	img = mpimg.imread( sys.argv[1] )
-	img = cv2.undistort(img, mtx, dist, None, mtx)
+#	img = cv2.undistort(img, mtx, dist, None, mtx)
 
-	combined, abs_bin, mag_bin, dir_bin, hls_bin = combined_thresh(img)
+	combined, abs_bin, mag_bin, dir_bin, hls_bin, canny_bin = combined_thresh_d(img)
 
 	plt.subplot(2, 3, 1)
 	plt.imshow(abs_bin, cmap='gray', vmin=0, vmax=1)
+	plt.title('abs sobel')
 	plt.subplot(2, 3, 2)
 	plt.imshow(mag_bin, cmap='gray', vmin=0, vmax=1)
+	plt.title('mag sobel')
 	plt.subplot(2, 3, 3)
 	plt.imshow(dir_bin, cmap='gray', vmin=0, vmax=1)
 	plt.subplot(2, 3, 4)
 	plt.imshow(hls_bin, cmap='gray', vmin=0, vmax=1)
+	plt.title('hls sobel')
 	plt.subplot(2, 3, 5)
-	plt.imshow(img)
+	plt.imshow( canny_bin, cmap = 'gray')
+	plt.title('canny')
+	# plt.imshow(img)
 	plt.subplot(2, 3, 6)
 	plt.imshow(combined, cmap='gray', vmin=0, vmax=1)
+	plt.title('combined')
 
 	plt.tight_layout()
 	plt.show()

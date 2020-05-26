@@ -117,7 +117,7 @@ def open_window(width, height, undisort ):
     cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
     cv2.resizeWindow(WINDOW_NAME, width, height)
     cv2.moveWindow(WINDOW_NAME, 100, 100)
-    cv2.setWindowTitle(WINDOW_NAME, 'Camera Demo for Jetson TX2/TX1')
+    cv2.setWindowTitle(WINDOW_NAME, 'Camera Demo foimport argparser Jetson TX2/TX1')
 
     if undisort :
         cv2.namedWindow(WINDOW_NAME_UD, cv2.WINDOW_NORMAL)
@@ -149,7 +149,7 @@ def read_cam(cap, save_path, width, height, undisort, file_counter = 1):
         print( pts )
         pts = pts.reshape((-1,1,2))
         print( pts )
-        calfileName = "camera_cal" + str(width) + "-" + str(height) + ".p"
+        calfileName = "ncamera_cal" + str(width) + "-" + str(height) + ".p"
         with open(calfileName, 'rb') as f:
             save_dict = pickle.load(f)
             mtx = save_dict['mtx']

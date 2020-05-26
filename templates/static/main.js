@@ -323,7 +323,7 @@ var driveHandler = new function() {
                                 'recording': state.recording})
         // console.log(data)
         $.post(driveURL, data, function( retData ){
-            console.log( retData );
+           // console.log( retData );
             if( robotState == null ||  robotState.x != retData.x || robotState.y != retData.y || robotState.theta != retData.theta )
             {
                 robotState = retData;
@@ -349,8 +349,7 @@ var driveHandler = new function() {
     function pilotLoop() {
           setTimeout(function () {
             postDrive()
-
-          if (state.pilotOn ) {
+          if (state.pilotOn == true ) {
             pilotLoop();
           }
       }, 200)
@@ -498,8 +497,10 @@ var driveHandler = new function() {
     var togglePilot = function(){
       state.pilotOn = !state.pilotOn;
       postDrive();
-      if( state.polotOn )
-        pilotLoop(); //取robot位置
+      if( state.pilotOn == true )
+      {
+         pilotLoop(); //取robot位置
+      }
     };
 
     var   captureImage = function(){

@@ -17,6 +17,8 @@ from threading import Thread
 import multiprocessing
 import serial
 import threading
+import numpy as np
+import math
 
 
 class ZMCRobot:
@@ -39,6 +41,9 @@ class ZMCRobot:
         self.setV = 0.0
         self.setW = 0.0
         self._shutdown = False
+        self.onTurnBack = False
+        self.prevTheta = 0
+        self.turnedTheta = 0
 
         try:
             print('Try to open Serial: %s at %d ' % ( port, baud))
@@ -57,7 +62,7 @@ class ZMCRobot:
 
     def serialReadThread(self):
         print("Start reading thead of serial...")
-        data = bytearray ()
+        data = bytearray(300)
         inBinaryPkg = False
         cnt = 0
         binaryPkgLen = -1
@@ -69,33 +74,34 @@ class ZMCRobot:
             byteData = self.serial.read()
             if len(byteData) <= 0 :
                 continue
-
-            data.append( byteData[0] )
+            data[cnt] = byteData[0]
+            cnt= cnt+1
 
             if inBinaryPkg == True:
                 if( binaryPkgLen == -1 ) :
                     binaryPkgLen = byteData[0]
                 else :
-                    cnt += 1
-                    if( cnt >= binaryPkgLen ):
+                    if( cnt >= binaryPkgLen + 2 ):
                         self.binaryPackageProcess( data )
                         cnt = 0
                         binaryPkgLen = -1
                         inBinaryPkg = False
-                        data.clear()
                 continue
 
             if (byteData[0] & 0xff) > 0x7f : #binary package
-                data.clear()
+                cnt = 0
+                data[cnt] = byteData[0]
+                cnt= cnt+1
                 binaryPkgLen = -1
                 inBinaryPkg = True
                 continue
 
-            if ( byteData[0] == '\r' or byteData[0] == '\n' or byteData[0] == ';'):
+            if ( byteData[0] == 0x0d  or byteData[0] == 0x0a or byteData[0] == ord(';') ):
+                data[cnt] = 0
+                cnt = 0
                 try:
                     lineStr = data.decode('utf-8')
                     print( lineStr )
-                    data.clear()
                 except exception as e:
                     print('serial data err: ', e )
                     continue
@@ -107,36 +113,6 @@ class ZMCRobot:
                 else:
                     print('info:', lineStr )
         print('all done! Let s go...')                
-
-    # def serialReadThread(self):
-    #     print("\nStart reading thead of serial...")
-    #     while True :
-    #         if self._shutdown == True:
-    #             print('required to end ... ')
-    #             break
-
-    #         lineReaded = self.serial.readline()
-    #         if len(lineReaded) < 2:
-    #             continue
-
-    #         try:
-    #             lineStr = lineReaded.decode('utf-8')
-    #         except Exception as e:
-    #             print('serial data err: ', e )
-    #             continue
-
-    #         if lineStr.find('READY') == 0:
-    #             print('Robot connected.')
-    #             self.sendCmd('\ncr;\n' )
-    #             continue
-    #         elif lineStr.find('IR') == 0 or lineStr.find('IM') == 0 or lineStr.find('RD') == 0 or lineStr.find('CM') == 0:
-    #             continue
-    #         elif lineStr.find('RP') == 0:
-    #             self.robotPosProcess( lineStr )
-    #             continue
-    #         else:
-    #             print('info:', lineStr )
-    #     pass
 
     def print_position( self ):
         print('x:%.3f,y:%.3f; theta:%.3f;\n v:%.3f, voltage: %.2f' % (self.x, self.y, self.theta, self.v, self.voltage) )
@@ -156,12 +132,21 @@ class ZMCRobot:
 
     def binaryPackageProcess(self, data):
         if data[0] == 0xa1 or data[0] == 0xa0:
-            self.x = (data[2] & 0xff + data[3]&0xff *256) / 1000.0
-            self.y = (data[4] & 0xff + data[5]&0xff *256) / 1000.0
-            self.theta = (data[6] & 0xff + data[7]&0xff *256) / 1000.0
-            self.v = (data[8] & 0xff ) / 100.0
-            self.voltage = (data[9] & 0xff) / 10.0
-        pass
+            self.x = self.getIntValue(data[2], data[3]) / 1000.0   #(data[2]  + data[3] *256) / 1000.0
+            self.y = self.getIntValue(data[4], data[5]) / 1000.0   #(data[4]  + data[5] *256) / 1000.0
+            self.theta = self.getIntValue(data[6], data[7]) / 1000.0   #(data[6]  + data[7] * 256) / 1000.0
+            self.v = data[8]  / 100.0
+            self.voltage = data[9] / 10.0
+            self.update_turn_back()
+
+    def getIntValue(self, bl, bh ):
+        l = int( bl )
+        h = int( bh )
+        if h >=  0x80:
+            return -( 256*(h-0x80) + l )
+        else:
+            return h *256 + l
+
 
     def robotPosProcess( self, posInfo ): 
         #posInfo RBx,y,theta,w,v;
@@ -190,12 +175,32 @@ class ZMCRobot:
         cmdStr = 'sd%.3f,%.3f;\n' % (self.setV, self.setW)
         #cmdStr = 'sd' + str(self.setV) + ',' + str(self.setW) + ';\n'
         self.sendCmd( cmdStr )
-        print( cmdStr )
+        # print( cmdStr )
         pass
 
-# donkeyCar api
-    def update(self):
-        pass
+    def turn_back(self ):
+        cmdStr = 'tl0,180;'
+        self.sendCmd( cmdStr )
+        self.prevTheta = self.theta
+        self.turnedTheta = 0
+        self.onTurnBack = True
+        print( cmdStr )
+
+    def turn_back_ok(self ):
+        return self.onTurnBack == False
+
+    def update_turn_back(self ):
+        if self.onTurnBack == False:
+            return
+        delta_theta = self.theta - self.prevTheta
+        self.prevTheta = self.theta
+        delta_theta = math.atan2(math.sin(delta_theta), math.cos(deta_theta))
+        self.turnedTheta = self.turnedTheta + delta_theta
+        if self.turnedTheta >= (np.pi / 2 - 0.09) :
+            self.onTurnBack = False  #turn back finished
+            print('turn back finished!')
+        
+
 
     def run(self, throttle, angle):
         self.throttle = throttle
