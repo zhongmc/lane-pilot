@@ -241,22 +241,51 @@ def auto_canny(image, sigma=0.33):
 
 def horizen_lines(image ):
 	histogram = np.sum(image, axis=1)
-	histogram = histogram/255
 	avg = np.mean( histogram )
-	his = np.zeros_like( histogram)
-	his[histogram > 3*avg ] = 1
-	cnt = np.sum( his )
-	return cnt
+	travg = int( 3* avg)
+	peaks = []
+	for i in range(1, len(histogram)- 2 ):
+		if histogram[i-1] < histogram[i] >histogram[i+1]  and histogram[i] > travg:
+			peaks.append((i, histogram[i]))
+
+	if len(peaks) < 4:
+		return 0
+
+	ps = np.array( peaks, dtype= np.int32)
+	sid =  np.lexsort(-ps.T)
+	ps = ps[ sid ]
+	print( peaks )
+	print( ps )
+
+	idxs = [0, 0, 0, 0]
+	idxs[0] = ps[0][0]
+	idxs[1] = ps[1][0]
+	idxs[2] = ps[2][0]
+	idxs[3] = ps[3][0]
+	print( idxs )
+	idxs.sort()
+	print( idxs )
+	print((int(avg)))
+	if ps[3][1] > 3*avg and 15 < idxs[1] - idxs[0] < 30 and 35< idxs[2] - idxs[1] < 60 :
+		return 4
+	return 0
+
+#二阶拟合，求切线
+def line_of_poly( xp, yp, y,  y0, y1 ):
+	poly_fit = np.polyfit(yp, xp, 2)  #x = ay^2 + by + c
+	k = 2* poly_fit[0] *y + poly_fit[1]
+
+	x0 = poly_fit[0] *y0**2 + poly_fit[1] * y0 + poly_fit[2]
+	x1 = int( k*(y1 - y0)  + x0 )
+	x0 = int( x0 )
+	return np.array([x0, y0, x1, y1] ), poly_fit, x0, k
 
 
-def line_fit( image ):
-	"""
-	Find and fit lane lines
-	"""
+def line_fit_with_image( image ):
 	width = image.shape[1]
 	height = image.shape[0]
 	# Take a histogram of the bottom half of the image
-	histogram = np.sum(image[height//2:,:], axis=0)
+	histogram = np.sum(image[200:,:], axis=0)  #height//2
 	midpoint = np.int(histogram.shape[0]/2)
 	leftx_base = np.argmax(histogram[0:midpoint])
 	rightx_base = np.argmax(histogram[midpoint:]) + midpoint
@@ -272,7 +301,7 @@ def line_fit( image ):
 	leftx_current = leftx_base
 	rightx_current = rightx_base
 	# Set the width of the windows +/- margin
-	margin = 60
+	margin = int(width/16)
 	# Set minimum number of pixels found to recenter window
 	minpix = 15
 	# Create empty lists to receive left and right lane pixel indices
@@ -309,20 +338,17 @@ def line_fit( image ):
 	rightx = nonzerox[right_lane_inds]
 	righty = nonzeroy[right_lane_inds]
 
-
 	if lefty is None or righty is None:
-		return None, None, None, 0, 0
+		return None, 0
 	if len(lefty ) == 0 or len(righty ) == 0 :
-		return None, None, None, 0, 0
-
-	lines = []
+		return None, 0
+	line_image = np.zeros((height, width, 3), dtype=np.uint8)
+	# line_image = (np.dstack((image, image, image))*255).astype('uint8')
+	window_img = np.zeros_like(line_image)
 
 #二阶拟合，求切线
 	left_line, left_fit, left_x0, kl  = line_of_poly( leftx, lefty,   int(height-height/4-1),  height -1, int( height / 6)   )  # x = ay^2 + by + c
-	lines.append( left_line )
-
 	right_line, right_fit, right_x0, kr  = line_of_poly( rightx, righty,  int(height-height/4-1), height-1, int(height/6)  )
-	lines.append( right_line )
 
 #中间目标线
 	k0 = (kl + kr)/2
@@ -334,52 +360,41 @@ def line_fit( image ):
 	x0 = int(x0)
 	x1 = int( x1 )
 	goal_line = np.array([x0, y0, x1, y1 ])
-	lines.append( goal_line )
-	# x0,y0,x1,y1 =  left_line.reshape(4)
-	# lx = x1-x0
-	# ly = y1 - y0
-	# x0,y0,x1,y1 =  right_line.reshape(4)
-	# rx = x1 - x0
-	# ry = y1 - y0
-	# tx = lx + rx
-	# ty = ly + ry
-	# x0 = int((left_x0 + right_x0)/2)
-	# y0 = height - 1
-	# x1 =x0 + tx
-	# y1 = y0 + ty
-	# lines.append( np.array([x0, y0, x1, y1 ]) )
-	return lines,  left_fit, right_fit, avg_theta, int(x0 - width/2)
+	
+	# Color in left and right line pixels
+	line_image[nonzeroy[left_lane_inds], nonzerox[left_lane_inds]] = [234, 217, 53]
+	line_image[nonzeroy[right_lane_inds], nonzerox[right_lane_inds]] = [234, 217, 53]
 
-#二阶拟合，求切线
-def line_of_poly( xp, yp, y,  y0, y1 ):
-	poly_fit = np.polyfit(yp, xp, 2)  #x = ay^2 + by + c
-	k = 2* poly_fit[0] *y + poly_fit[1]
+	cnt = int(height / 10)
+	ploty = np.linspace(0,  height -1, cnt  )
+	left_fitx = left_fit[0]*ploty**2 + left_fit[1]*ploty + left_fit[2]
+	right_fitx = right_fit[0]*ploty**2 + right_fit[1]*ploty + right_fit[2]
+	for i in range(cnt - 1) :
+		xl0 = int( left_fitx[i])
+		xr0 = int(right_fitx[i])
+		y0 = int(ploty[i])
+		xl1 = int(left_fitx[i + 1])
+		xr1 = int(right_fitx[i+1])
+		y1 = int(ploty[i+1])
+		cv2.line( line_image, (xl0,y0), (xl1, y1), (76, 177, 34), 1 )
+		cv2.line( line_image, (xr0,y0), (xr1, y1), (76, 177, 34),  1  )
+	# x1,y1,x2,y2 =  lines[0].reshape(4)
+	# cv2.line( line_image, (x1,y1), (x2, y2), (0, 0, 255), 2 )
+	# x1,y1,x2,y2 =  lines[1].reshape(4)
+	# cv2.line( line_image, (x1,y1), (x2, y2), (0, 0, 255), 2 )
+	x1,y1,x2,y2 =  goal_line.reshape(4)
+	cv2.line( line_image, (x1,y1), (x2, y2), (36, 28, 237), 3 )
 
-	x0 = poly_fit[0] *y0**2 + poly_fit[1] * y0 + poly_fit[2]
-	x1 = int( k*(y1 - y0)  + x0 )
-	x0 = int( x0 )
-	return np.array([x0, y0, x1, y1] ), poly_fit, x0, k
+	left_line_window1 = np.array([np.transpose(np.vstack([left_fitx-margin, ploty]))])
+	left_line_window2 = np.array([np.flipud(np.transpose(np.vstack([left_fitx+margin, ploty])))])
+	left_line_pts = np.hstack((left_line_window1, left_line_window2))
+	right_line_window1 = np.array([np.transpose(np.vstack([right_fitx-margin, ploty]))])
+	right_line_window2 = np.array([np.flipud(np.transpose(np.vstack([right_fitx+margin, ploty])))])
+	right_line_pts = np.hstack((right_line_window1, right_line_window2))
 
+	# Draw the lane onto the warped blank image
+	cv2.fillPoly(window_img, np.int_([left_line_pts]), (29,230, 181))
+	cv2.fillPoly(window_img, np.int_([right_line_pts]), (29,230, 181))
+	line_image = cv2.addWeighted(line_image, 1, window_img, 0.3, 0)
+	return line_image, avg_theta
 
-
-def draw_lines(line_image, lines, left_fit, right_fit , height  ):
-		cnt = int(height / 10)
-		ploty = np.linspace(0,  height -1, cnt  )
-		left_fitx = left_fit[0]*ploty**2 + left_fit[1]*ploty + left_fit[2]
-		right_fitx = right_fit[0]*ploty**2 + right_fit[1]*ploty + right_fit[2]
-		for i in range(cnt - 1) :
-			xl0 = int( left_fitx[i])
-			xr0 = int(right_fitx[i])
-			y0 = int(ploty[i])
-			xl1 = int(left_fitx[i + 1])
-			xr1 = int(right_fitx[i+1])
-			y1 = int(ploty[i+1])
-			cv2.line( line_image, (xl0,y0), (xl1, y1), (255, 255, 0), 10 )
-			cv2.line( line_image, (xr0,y0), (xr1, y1), (255, 255, 0),  10  )
-		x1,y1,x2,y2 =  lines[0].reshape(4)
-		cv2.line( line_image, (x1,y1), (x2, y2), (0, 0, 255), 2 )
-		x1,y1,x2,y2 =  lines[1].reshape(4)
-		cv2.line( line_image, (x1,y1), (x2, y2), (0, 0, 255), 2 )
-		x1,y1,x2,y2 =  lines[2].reshape(4)
-		cv2.line( line_image, (x1,y1), (x2, y2), (255, 0, 0), 5 )
-		return line_image

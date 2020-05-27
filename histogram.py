@@ -10,7 +10,7 @@ import os
 import math
 
 from zmcrobot import ZMCRobot
-from lane_detector import line_fit, canny, sobel, draw_lines, transform_matrix_640,transform_matrix_320, horizen_lines
+from lane_detector import  canny, sobel,  transform_matrix_640,transform_matrix_320, horizen_lines, line_fit_with_image
 
 #from combined_thresh import combined_thresh, magthresh
 #from line_fit import line_fit, viz2, calc_curve, final_viz
@@ -69,33 +69,34 @@ def histogram_analy(  image_file, undisort, algorithm  ):
 	wraped_image = cv2.warpPerspective(canny_image, m, (width, height), flags=cv2.INTER_LINEAR)
 
 	org_wraped_image =  cv2.warpPerspective(undis_image, m, (width, height), flags=cv2.INTER_LINEAR)
-	# lines,  target_line, line_theta,  d_center   = hough_lines( wraped_image )
-	lines,  left_fit, right_fit, line_theta,  d_center   = line_fit( wraped_image )
-
-	line_image = np.zeros_like(image)
-	#画二阶拟合曲线(用10段线段)
-	if lines is not None:
-		cnt = int(height / 10)
-		ploty = np.linspace(0,  height -1, cnt  )
-		left_fitx = left_fit[0]*ploty**2 + left_fit[1]*ploty + left_fit[2]
-		right_fitx = right_fit[0]*ploty**2 + right_fit[1]*ploty + right_fit[2]
 	
-		for i in range(cnt - 1) :
-			xl0 = int( left_fitx[i])
-			xr0 = int(right_fitx[i])
-			y0 = int(ploty[i])
-			xl1 = int(left_fitx[i + 1])
-			xr1 = int(right_fitx[i+1])
-			y1 = int(ploty[i+1])
-			cv2.line( line_image, (xl0,y0), (xl1, y1), (255, 255, 0), 10 )
-			cv2.line( line_image, (xr0,y0), (xr1, y1), (255, 255, 0),  10  )
+	line_image, line_theta = line_fit_with_image(wraped_image )
 
-		x1,y1,x2,y2 =  lines[0].reshape(4)
-		cv2.line( line_image, (x1,y1), (x2, y2), (0, 0, 255), 2 )
-		x1,y1,x2,y2 =  lines[1].reshape(4)
-		cv2.line( line_image, (x1,y1), (x2, y2), (0, 0, 255), 2 )
-		x1,y1,x2,y2 =  lines[2].reshape(4)
-		cv2.line( line_image, (x1,y1), (x2, y2), (255, 0, 0), 5 )
+	# lines,  left_fit, right_fit, line_theta,  d_center   = line_fit( wraped_image )
+	# line_image = np.zeros_like(image)
+	# #画二阶拟合曲线(用10段线段)
+	# if lines is not None:
+	# 	cnt = int(height / 10)
+	# 	ploty = np.linspace(0,  height -1, cnt  )
+	# 	left_fitx = left_fit[0]*ploty**2 + left_fit[1]*ploty + left_fit[2]
+	# 	right_fitx = right_fit[0]*ploty**2 + right_fit[1]*ploty + right_fit[2]
+	
+	# 	for i in range(cnt - 1) :
+	# 		xl0 = int( left_fitx[i])
+	# 		xr0 = int(right_fitx[i])
+	# 		y0 = int(ploty[i])
+	# 		xl1 = int(left_fitx[i + 1])
+	# 		xr1 = int(right_fitx[i+1])
+	# 		y1 = int(ploty[i+1])
+	# 		cv2.line( line_image, (xl0,y0), (xl1, y1), (255, 255, 0), 10 )
+	# 		cv2.line( line_image, (xr0,y0), (xr1, y1), (255, 255, 0),  10  )
+
+	# 	x1,y1,x2,y2 =  lines[0].reshape(4)
+	# 	cv2.line( line_image, (x1,y1), (x2, y2), (0, 0, 255), 2 )
+	# 	x1,y1,x2,y2 =  lines[1].reshape(4)
+	# 	cv2.line( line_image, (x1,y1), (x2, y2), (0, 0, 255), 2 )
+	# 	x1,y1,x2,y2 =  lines[2].reshape(4)
+	# 	cv2.line( line_image, (x1,y1), (x2, y2), (255, 0, 0), 5 )
 
 		# x1,y1,x2,y2 =  lines[3].reshape(4)
 		# cv2.line( line_image, (x1,y1), (x2, y2), (0, 255, 0), 1)
@@ -110,10 +111,11 @@ def histogram_analy(  image_file, undisort, algorithm  ):
 
 	elapsed = time() - start
 
-	label = 'w: %.3f dc: %d;t:%.2f' % (ctrl_theta, d_center, elapsed*1000)
+	label = 'w: %.3f  t:%.2f' % (ctrl_theta,  elapsed*1000)
 	result_image = cv2.putText(result_image, label, (30,20), 0, 0.7, (255,0,0), 2, cv2.LINE_AA)
+	print( hlines )
 	if  hlines >= 4 :
-		label = 'Stop !'
+		label = 'Stop  !'
 		result_image = cv2.putText(result_image, label, (30,50), 0, 0.7, (0,0,196), 2, cv2.LINE_AA)
 
 
@@ -159,36 +161,35 @@ def histogram_analy(  image_file, undisort, algorithm  ):
 
 	plt.tight_layout()
 
-	# histogram = np.sum(wraped_image[height//2:,:], axis=0)
-	# histogram = histogram / 255
-	# mlval  = np.amax(histogram)
-	# plt.subplot(236)
-	# plt.plot(histogram)
-	# plt.xlim(0, width)
-	# plt.ylim(0, mlval)
-	# plt.title("X histogram")
-	# midpoint= np.int(histogram.shape[0]/2)
-	# leftx_base = np.argmax(histogram[0:midpoint])
-	# rightx_base = np.argmax(histogram[midpoint: histogram.shape[0]]) + midpoint
-	# mlval  = np.amax(histogram[0:midpoint])
-	# mrval = np.amax(histogram[midpoint:])
-	# print('x-l %d : %d x-r: %d : %d ' %( leftx_base,  mlval, rightx_base, mrval))
-
-
-	#histogram = np.sum(wraped[wraped.shape[0]//2:,:], axis=1)
-	histogram = np.sum(wraped_image, axis=1)
-	histogram = histogram/255
+	histogram = np.sum(wraped_image[200:,:], axis=0) #height//2
+	histogram = histogram / 255
+	mlval  = np.amax(histogram)
+	plt.subplot(236)
+	plt.plot(histogram)
+	plt.xlim(0, width)
+	plt.ylim(0, mlval)
+	plt.title("X histogram")
 	midpoint= np.int(histogram.shape[0]/2)
 	leftx_base = np.argmax(histogram[0:midpoint])
 	rightx_base = np.argmax(histogram[midpoint: histogram.shape[0]]) + midpoint
 	mlval  = np.amax(histogram[0:midpoint])
 	mrval = np.amax(histogram[midpoint:])
-	print('y-l %d : %d y-r: %d : %d ' %( leftx_base,  mlval, rightx_base, mrval))
-	plt.subplot(236)
-	plt.plot(histogram)
-	plt.xlim(0, height)
-	plt.ylim(0, mlval)
-	plt.title("Y histogram")
+	print('x-l %d : %d x-r: %d : %d ' %( leftx_base,  mlval, rightx_base, mrval))
+
+
+	# histogram = np.sum(wraped_image, axis=1)
+	# histogram = histogram/255
+	# midpoint= np.int(histogram.shape[0]/2)
+	# leftx_base = np.argmax(histogram[0:midpoint])
+	# rightx_base = np.argmax(histogram[midpoint: histogram.shape[0]]) + midpoint
+	# mlval  = np.amax(histogram[0:midpoint])
+	# mrval = np.amax(histogram[midpoint:])
+	# print('y-l %d : %d y-r: %d : %d ' %( leftx_base,  mlval, rightx_base, mrval))
+	# plt.subplot(236)
+	# plt.plot(histogram)
+	# plt.xlim(0, height)
+	# plt.ylim(0, mlval)
+	# plt.title("Y histogram")
 	plt.show()
 
 	cv2.imshow('result', result_image )

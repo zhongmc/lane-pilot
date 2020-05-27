@@ -17,7 +17,7 @@ from web_camera import WebController, open_cam_onboard
 #from combined_thresh import combined_thresh, magthresh
 #from line_fit import line_fit, viz2, calc_curve, final_viz
 
-from lane_detector import line_fit, canny, sobel, draw_lines, transform_matrix_640,transform_matrix_320, horizen_lines
+from lane_detector import  canny, sobel,  transform_matrix_640,transform_matrix_320, horizen_lines, line_fit_with_image
 import sys
 from time import time
 from threading import Thread
@@ -53,12 +53,13 @@ class LanePilot():
 	def drive_car(self, angle, throttle, pilot ):
 		if pilot == False and self.pilotOn == True :
 			print('stop line pilot! ')
-
+		if self.pilotOn == False and pilot == True:
+			print('start line polot...')
 		self.pilotOn = pilot
 		if self.pilotOn == False:
 			self.robot.drive_car(throttle, angle  )
-		else:
-			print('start lane pilot...')
+
+		self.onTurnBack = False  # stop current turn back ???
 
 		ret = {}
 		ret['x'] = self.robot.x
@@ -112,9 +113,10 @@ class LanePilot():
 
 			#canny_image = combined_thresh(undis_image)
 			wraped_image = cv2.warpPerspective(canny_image, m, (width, height))
-
-			lines,  left_fit, right_fit, line_theta,  d_center   = line_fit( wraped_image )
-			line_image = np.zeros_like(image)
+		
+			line_image, line_theta = line_fit_with_image(wraped_image )
+			# lines,  left_fit, right_fit, line_theta,  d_center   = line_fit( wraped_image )
+			# line_image = np.zeros_like(image)
 
 			if self.onTurnBack :
 				label = 'turn back...'
@@ -122,13 +124,11 @@ class LanePilot():
 					self.onTurnBack = False
 					label = 'turn back OK'
 			else:
-				if lines is not None:
-					draw_lines(line_image, lines, left_fit, right_fit, height )
+				if line_image is not None:
 					ctrl_theta = np.pi/2 + line_theta
 					if self.pilotOn :
 						self.robot.drive_car(0.07, -0.8*ctrl_theta )
-					label = 'w: %.3f dc: %d;t:%.2f' % (ctrl_theta, d_center, elapsed*1000)
-
+					label = 'w: %.3f t:%.2f' % (ctrl_theta, elapsed*1000)
 				else:
 					if self.pilotOn:
 						self.robot.drive_car(0, 0 ) # stop the car when none line 
@@ -136,14 +136,17 @@ class LanePilot():
 
 				hlines = horizen_lines( wraped_image)
 				if hlines >= 4 : #stop lines turn arround
+					self.capture_image()
 					self.robot.turn_back()
 					self.onTurnBack = True
 					label = 'Stop and turn'
-			
 		# Warp the blank back to original image space using inverse perspective matrix (Minv)
-			newwarp = cv2.warpPerspective(line_image, m_inv, (width, height))
+			if line_image is not None:			
+				newwarp = cv2.warpPerspective(line_image, m_inv, (width, height))
 	# Combine the result with the original image
-			result_image = cv2.addWeighted(undis_image, 1, newwarp, 0.5, 0)
+				result_image = cv2.addWeighted(undis_image, 1, newwarp, 0.5, 0)
+			else:
+				result_image = undis_image
 			result_image = cv2.putText(result_image, label, (30,40), 0, 0.5, (128,0,128), 2, cv2.LINE_AA)
 			self.web.update_image( result_image )
 			elapsed = time() - start

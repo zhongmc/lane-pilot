@@ -194,7 +194,7 @@ class ZMCRobot:
             return
         delta_theta = self.theta - self.prevTheta
         self.prevTheta = self.theta
-        delta_theta = math.atan2(math.sin(delta_theta), math.cos(deta_theta))
+        delta_theta = math.atan2(math.sin(delta_theta), math.cos(delta_theta))
         self.turnedTheta = self.turnedTheta + delta_theta
         if self.turnedTheta >= (np.pi / 2 - 0.09) :
             self.onTurnBack = False  #turn back finished
