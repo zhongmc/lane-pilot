@@ -10,7 +10,7 @@ import os
 import math
 
 from zmcrobot import ZMCRobot
-from lane_detector import  canny, sobel,  transform_matrix_640,transform_matrix_320, horizen_lines, line_fit_with_image
+from lane_detector import  canny, sobel,  transform_matrix_640,transform_matrix_320, horizen_peaks, line_fit_with_image
 
 #from combined_thresh import combined_thresh, magthresh
 #from line_fit import line_fit, viz2, calc_curve, final_viz
@@ -106,15 +106,18 @@ def histogram_analy(  image_file, undisort, algorithm  ):
 	newwarp = cv2.warpPerspective(line_image, m_inv, (width, height))
 	# Combine the result with the original image
 	result_image = cv2.addWeighted(undis_image, 0.8, newwarp, 0.8, 0)
+	hpeakidxs = horizen_peaks( wraped_image, 3)
+	stopLine = False
+	if hpeakidxs is not None:
+		if hpeakidxs[0] > height/4 and 15 < hpeakidxs[1] - hpeakidxs[0] < 30 and 35< hpeakidxs[2] - hpeakidxs[1] < 60 :
+			stopLine = True
 
-	hlines = horizen_lines( wraped_image)
 
 	elapsed = time() - start
 
 	label = 'w: %.3f  t:%.2f' % (ctrl_theta,  elapsed*1000)
 	result_image = cv2.putText(result_image, label, (30,20), 0, 0.7, (255,0,0), 2, cv2.LINE_AA)
-	print( hlines )
-	if  hlines >= 4 :
+	if stopLine :
 		label = 'Stop  !'
 		result_image = cv2.putText(result_image, label, (30,50), 0, 0.7, (0,0,196), 2, cv2.LINE_AA)
 

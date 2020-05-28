@@ -17,7 +17,7 @@ from web_camera import WebController, open_cam_onboard
 #from combined_thresh import combined_thresh, magthresh
 #from line_fit import line_fit, viz2, calc_curve, final_viz
 
-from lane_detector import  canny, sobel,  transform_matrix_640,transform_matrix_320, horizen_lines, line_fit_with_image
+from lane_detector import  canny, sobel,  transform_matrix_640,transform_matrix_320, horizen_peaks, line_fit_with_image
 import sys
 from time import time
 from threading import Thread
@@ -51,6 +51,14 @@ class LanePilot():
 		cv2.destroyAllWindows()
 
 	def drive_car(self, angle, throttle, pilot ):
+		ret = {}
+		ret['x'] = self.robot.x
+		ret['y'] = self.robot.y
+		ret['theta'] = self.robot.theta
+
+		if self.pilotOn == True and self.onTurnBack : #pilot mode and on stop line;
+			return ret
+
 		if pilot == False and self.pilotOn == True :
 			print('stop line pilot! ')
 		if self.pilotOn == False and pilot == True:
@@ -60,11 +68,6 @@ class LanePilot():
 			self.robot.drive_car(throttle, angle  )
 
 		self.onTurnBack = False  # stop current turn back ???
-
-		ret = {}
-		ret['x'] = self.robot.x
-		ret['y'] = self.robot.y
-		ret['theta'] = self.robot.theta
 		return ret
 
 #to do capture a large image???
@@ -114,7 +117,12 @@ class LanePilot():
 			#canny_image = combined_thresh(undis_image)
 			wraped_image = cv2.warpPerspective(canny_image, m, (width, height))
 		
-			line_image, line_theta = line_fit_with_image(wraped_image )
+			try:
+				line_image, line_theta = line_fit_with_image(wraped_image )
+			except BaseException:
+				print('line detect failed ' )
+				continue
+
 			# lines,  left_fit, right_fit, line_theta,  d_center   = line_fit( wraped_image )
 			# line_image = np.zeros_like(image)
 
@@ -134,12 +142,21 @@ class LanePilot():
 						self.robot.drive_car(0, 0 ) # stop the car when none line 
 					label = 'failed to detect'
 
-				hlines = horizen_lines( wraped_image)
-				if hlines >= 4 : #stop lines turn arround
-					self.capture_image()
-					self.robot.turn_back()
+				hpeakidxs = horizen_peaks( wraped_image, 3)
+				stopLine = False
+				if hpeakidxs is not None:
+					if hpeakidxs[0] > height/4 and 15 < hpeakidxs[1] - hpeakidxs[0] < 30 and 35< hpeakidxs[2] - hpeakidxs[1] < 60 :
+						stopLine = True
+						label = 'Stop line'
+						print('stop line.')
+
+				# hlines = horizen_lines( wraped_image)
+				if stopLine == True and self.pilotOn == True : #stop lines turn arround
 					self.onTurnBack = True
-					label = 'Stop and turn'
+					self.robot.turn_back()
+					self.capture_image()
+					label = 'turn back...'
+					print('stop and turn back.')
 		# Warp the blank back to original image space using inverse perspective matrix (Minv)
 			if line_image is not None:			
 				newwarp = cv2.warpPerspective(line_image, m_inv, (width, height))

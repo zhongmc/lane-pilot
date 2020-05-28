@@ -239,36 +239,33 @@ def auto_canny(image, sigma=0.33):
 	edged = cv2.Canny( image, lower, upper )
 	return edged
 
-def horizen_lines(image ):
+#horizen histogram top 4 peak position; used to get the horizen lines 
+def horizen_peaks(image, peak_level ):
 	histogram = np.sum(image, axis=1)
 	avg = np.mean( histogram )
-	travg = int( 3* avg)
+	travg = int( peak_level * avg)
 	peaks = []
 	for i in range(1, len(histogram)- 2 ):
 		if histogram[i-1] < histogram[i] >histogram[i+1]  and histogram[i] > travg:
 			peaks.append((i, histogram[i]))
 
 	if len(peaks) < 4:
-		return 0
+		return None
 
 	ps = np.array( peaks, dtype= np.int32)
 	sid =  np.lexsort(-ps.T)
 	ps = ps[ sid ]
-	print( peaks )
-	print( ps )
+	#print( peaks )
+	#print( ps )
 
 	idxs = [0, 0, 0, 0]
 	idxs[0] = ps[0][0]
 	idxs[1] = ps[1][0]
 	idxs[2] = ps[2][0]
 	idxs[3] = ps[3][0]
-	print( idxs )
+	#print( idxs )
 	idxs.sort()
-	print( idxs )
-	print((int(avg)))
-	if ps[3][1] > 3*avg and 15 < idxs[1] - idxs[0] < 30 and 35< idxs[2] - idxs[1] < 60 :
-		return 4
-	return 0
+	return idxs
 
 #二阶拟合，求切线
 def line_of_poly( xp, yp, y,  y0, y1 ):

@@ -175,7 +175,7 @@ class ZMCRobot:
         cmdStr = 'sd%.3f,%.3f;\n' % (self.setV, self.setW)
         #cmdStr = 'sd' + str(self.setV) + ',' + str(self.setW) + ';\n'
         self.sendCmd( cmdStr )
-        # print( cmdStr )
+        print( cmdStr )
         pass
 
     def turn_back(self ):
