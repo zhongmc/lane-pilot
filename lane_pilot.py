@@ -17,7 +17,7 @@ from web_camera import WebController, open_cam_onboard
 #from combined_thresh import combined_thresh, magthresh
 #from line_fit import line_fit, viz2, calc_curve, final_viz
 
-from lane_detector import  canny, sobel,  transform_matrix_640,transform_matrix_320, horizen_peaks, line_fit_with_image
+from lane_detector import  canny, sobel,  transform_matrix_640,transform_matrix_320, horizen_peaks, line_fit_with_image,line_fit_with_contours_image
 import sys
 from time import time
 from threading import Thread
@@ -32,9 +32,16 @@ class LanePilot():
 		self.web = None
 		self.capCnt = 1
 		self.onTurnBack = False
+		self.width = 320
+		self.height = 240
+		self.recording = False
+		self.videoWriter = None
 
 	def start(self, width, height, sensor_id, port, serial_port, algorithm):
 		''' Start the lane pilot server  '''
+		self.width = width
+		self.height = height
+
 		self.robot = ZMCRobot(serial_port )
 		self.web = WebController( port  )
 
@@ -50,11 +57,16 @@ class LanePilot():
 		cap.release()
 		cv2.destroyAllWindows()
 
-	def drive_car(self, angle, throttle, pilot ):
+	def drive_car(self, angle, throttle, pilot , recording ):
 		ret = {}
 		ret['x'] = self.robot.x
 		ret['y'] = self.robot.y
 		ret['theta'] = self.robot.theta
+
+		if recording == True:
+			self.startRecording()
+		else:
+			self.stopRecording()
 
 		if self.pilotOn == True and self.onTurnBack : #pilot mode and on stop line;
 			return ret
@@ -67,8 +79,27 @@ class LanePilot():
 		if self.pilotOn == False:
 			self.robot.drive_car(throttle, angle  )
 
-		self.onTurnBack = False  # stop current turn back ???
+		# self.onTurnBack = False  # stop current turn back ???
 		return ret
+
+	def startRecording(self ):
+		if self.recording == True:
+			return
+		self.recording = True
+		tn = datetime.datetime.now()
+		filename = 'cap_imgs/video' + tn.strftime('%m-%d-%H%M%S.avi')
+		print('cap video to: ', filename )
+		fourcc = cv2.VideoWriter_fourcc(*'XVID')
+		self.videoWriter = cv2.VideoWriter(filename, fourcc, 10, (self.width, self.height ) )
+		if self.videoWriter is None:
+			print( 'failed to open video writer !')
+
+	def stopRecording(self ):
+		if self.recording == False:
+			return
+		self.recording = False
+		self.videoWriter.release()
+
 
 #to do capture a large image???
 	def capture_image(self):
@@ -116,12 +147,16 @@ class LanePilot():
 
 			#canny_image = combined_thresh(undis_image)
 			wraped_image = cv2.warpPerspective(canny_image, m, (width, height))
-		
+
+			stopline = False
+			obstacles = False
+			
 			try:
-				line_image, line_theta = line_fit_with_image(wraped_image )
+				# line_image, line_theta, d_center = line_fit_with_image(wraped_image )
+				line_image, line_theta, d_center , stopline, obstacles  = line_fit_with_contours_image( wraped_image )
 			except BaseException:
-				print('line detect failed ' )
-				continue
+				#print('line detect failed ' )
+				line_image = None
 
 			# lines,  left_fit, right_fit, line_theta,  d_center   = line_fit( wraped_image )
 			# line_image = np.zeros_like(image)
@@ -132,26 +167,30 @@ class LanePilot():
 					self.onTurnBack = False
 					label = 'turn back OK'
 			else:
-				if line_image is not None:
+				if  line_image is not None:
 					ctrl_theta = np.pi/2 + line_theta
+					w = -0.9*ctrl_theta + 1.2* d_center/width
 					if self.pilotOn :
-						self.robot.drive_car(0.07, -0.8*ctrl_theta )
-					label = 'w: %.3f t:%.2f' % (ctrl_theta, elapsed*1000)
+						self.robot.drive_car(0.10, w )
+					label = 'q:%.3f d:%d w:%.3f' % (ctrl_theta,d_center,w)
 				else:
 					if self.pilotOn:
 						self.robot.drive_car(0, 0 ) # stop the car when none line 
 					label = 'failed to detect'
 
-				hpeakidxs = horizen_peaks( wraped_image, 3)
-				stopLine = False
-				if hpeakidxs is not None:
-					if hpeakidxs[0] > height/4 and 15 < hpeakidxs[1] - hpeakidxs[0] < 30 and 35< hpeakidxs[2] - hpeakidxs[1] < 60 :
-						stopLine = True
-						label = 'Stop line'
-						print('stop line.')
+				if obstacles == True:
+					self.robot.drive_car(0, 0)
+					label = "Obstacle!"					
+				# hpeakidxs = horizen_peaks( wraped_image, 3)
+				# stopline = False
+				# if hpeakidxs is not None:
+				# 	if hpeakidxs[0] > height/4 and 10 < hpeakidxs[1] - hpeakidxs[0] < 30 and 35< hpeakidxs[2] - hpeakidxs[1] < 60 :
+				# 		stopline = True
+				# 		label = 'Stop line'
+				# 		print('stop line.')
 
 				# hlines = horizen_lines( wraped_image)
-				if stopLine == True and self.pilotOn == True : #stop lines turn arround
+				if stopline == True and self.pilotOn == True : #stop lines turn arround
 					self.onTurnBack = True
 					self.robot.turn_back()
 					self.capture_image()
@@ -165,7 +204,12 @@ class LanePilot():
 			else:
 				result_image = undis_image
 			result_image = cv2.putText(result_image, label, (30,40), 0, 0.5, (128,0,128), 2, cv2.LINE_AA)
+		
 			self.web.update_image( result_image )
+			
+			if self.recording == True and  self.videoWriter is not None:
+				self.videoWriter.write( result_image )
+
 			elapsed = time() - start
 #		cv2.imshow(WINDOW_NAME, result_image )
 			# tw = int( 100 - elapsed )

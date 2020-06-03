@@ -84,7 +84,7 @@ class WebController(tornado.web.Application):
     def updateDrive(self ):
         if self.pilot is None:
             return None
-        ret = self.pilot.drive_car( -self.angle, self.throttle , self.pilotOn) 
+        ret = self.pilot.drive_car( -self.angle, self.throttle , self.pilotOn, self.recording ) 
         return ret
 
 

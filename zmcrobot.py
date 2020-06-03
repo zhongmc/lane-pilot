@@ -102,7 +102,7 @@ class ZMCRobot:
                 try:
                     lineStr = data.decode('utf-8')
                     print( lineStr )
-                except exception as e:
+                except BaseException as e:
                     print('serial data err: ', e )
                     continue
                 if lineStr.find('READY') != -1:
@@ -110,6 +110,8 @@ class ZMCRobot:
                     self.sendCmd('\ncr;\n' )
                 elif lineStr.find('IR') == 0 or lineStr.find('IM') == 0 or lineStr.find('RD') == 0 or lineStr.find('CM') == 0:
                     continue
+                elif lineStr.find('-t1') == 0 or lineStr.find('-tl') == 0:
+                    self.onTurnBack = False
                 else:
                     print('info:', lineStr )
         print('all done! Let s go...')                
@@ -175,7 +177,7 @@ class ZMCRobot:
         cmdStr = 'sd%.3f,%.3f;\n' % (self.setV, self.setW)
         #cmdStr = 'sd' + str(self.setV) + ',' + str(self.setW) + ';\n'
         self.sendCmd( cmdStr )
-        print( cmdStr )
+        #print( cmdStr )
         pass
 
     def turn_back(self ):
@@ -187,7 +189,7 @@ class ZMCRobot:
         print( cmdStr )
 
     def turn_back_ok(self ):
-        return self.onTurnBack == False
+        return not self.onTurnBack
 
     def update_turn_back(self ):
         if self.onTurnBack == False:
@@ -196,7 +198,7 @@ class ZMCRobot:
         self.prevTheta = self.theta
         delta_theta = math.atan2(math.sin(delta_theta), math.cos(delta_theta))
         self.turnedTheta = self.turnedTheta + delta_theta
-        if self.turnedTheta >= (np.pi / 2 - 0.09) :
+        if self.turnedTheta >= (np.pi - 0.09) :
             self.onTurnBack = False  #turn back finished
             print('turn back finished!')
         
@@ -225,7 +227,7 @@ class ZMCRobot:
         self.sendCmd( cmdStr )
         print('ud:%.3f,%.3f' % (throttle, angle))
         #print('drv:', self.setV, self.setW)
-        print( cmdStr )
+        #print( cmdStr )
         return self.x,self.y,self.theta, self.w, self.v
         pass
 

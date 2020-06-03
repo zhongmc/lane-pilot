@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 
-import cv2
+
 import numpy as np
 import pickle
+import cv2
 
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
@@ -10,7 +11,7 @@ import os
 import math
 
 from zmcrobot import ZMCRobot
-from lane_detector import  canny, sobel,  transform_matrix_640,transform_matrix_320, horizen_peaks, line_fit_with_image
+from lane_detector import  canny, sobel,  transform_matrix_640,transform_matrix_320, horizen_peaks, line_fit_with_image,line_fit_with_contours_image
 
 #from combined_thresh import combined_thresh, magthresh
 #from line_fit import line_fit, viz2, calc_curve, final_viz
@@ -36,10 +37,9 @@ def parse_args():
     return args
 
 def histogram_analy(  image_file, undisort, algorithm  ):
-# Read camera calibration coefficients
+	print( image_file )
+	image=cv2.imread(image_file)
 	start = time()
-
-	image = cv2.imread(image_file)
 	height = image.shape[0]
 	width = image.shape[1]
 	cal_file = 'ncamera_cal' + str(width) + '-' + str(height) + '.p'
@@ -70,65 +70,43 @@ def histogram_analy(  image_file, undisort, algorithm  ):
 
 	org_wraped_image =  cv2.warpPerspective(undis_image, m, (width, height), flags=cv2.INTER_LINEAR)
 	
-	line_image, line_theta = line_fit_with_image(wraped_image )
+	# line_image, line_theta, d_center = line_fit_with_image(wraped_image )
 
-	# lines,  left_fit, right_fit, line_theta,  d_center   = line_fit( wraped_image )
-	# line_image = np.zeros_like(image)
-	# #画二阶拟合曲线(用10段线段)
-	# if lines is not None:
-	# 	cnt = int(height / 10)
-	# 	ploty = np.linspace(0,  height -1, cnt  )
-	# 	left_fitx = left_fit[0]*ploty**2 + left_fit[1]*ploty + left_fit[2]
-	# 	right_fitx = right_fit[0]*ploty**2 + right_fit[1]*ploty + right_fit[2]
-	
-	# 	for i in range(cnt - 1) :
-	# 		xl0 = int( left_fitx[i])
-	# 		xr0 = int(right_fitx[i])
-	# 		y0 = int(ploty[i])
-	# 		xl1 = int(left_fitx[i + 1])
-	# 		xr1 = int(right_fitx[i+1])
-	# 		y1 = int(ploty[i+1])
-	# 		cv2.line( line_image, (xl0,y0), (xl1, y1), (255, 255, 0), 10 )
-	# 		cv2.line( line_image, (xr0,y0), (xr1, y1), (255, 255, 0),  10  )
+	line_image, line_theta, d_center , stopline, obstacles = line_fit_with_contours_image(wraped_image )
 
-	# 	x1,y1,x2,y2 =  lines[0].reshape(4)
-	# 	cv2.line( line_image, (x1,y1), (x2, y2), (0, 0, 255), 2 )
-	# 	x1,y1,x2,y2 =  lines[1].reshape(4)
-	# 	cv2.line( line_image, (x1,y1), (x2, y2), (0, 0, 255), 2 )
-	# 	x1,y1,x2,y2 =  lines[2].reshape(4)
-	# 	cv2.line( line_image, (x1,y1), (x2, y2), (255, 0, 0), 5 )
-
-		# x1,y1,x2,y2 =  lines[3].reshape(4)
-		# cv2.line( line_image, (x1,y1), (x2, y2), (0, 255, 0), 1)
+	# image, contours, hierarchy = cv2.findContours(wraped_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE   )
+	# for i in range(0, len(contours)):
+	# 	x,y,w,h = cv2.boundingRect( contours[i] )
+	# 	cv2.rectangle(line_image, (x,y), (x+w, y+h), (0,0,196), 3)
 
 	ctrl_theta = -np.pi/2 - line_theta
 	# Warp the blank back to original image space using inverse perspective matrix (Minv)
 	newwarp = cv2.warpPerspective(line_image, m_inv, (width, height))
 	# Combine the result with the original image
 	result_image = cv2.addWeighted(undis_image, 0.8, newwarp, 0.8, 0)
-	hpeakidxs = horizen_peaks( wraped_image, 3)
-	stopLine = False
-	if hpeakidxs is not None:
-		if hpeakidxs[0] > height/4 and 15 < hpeakidxs[1] - hpeakidxs[0] < 30 and 35< hpeakidxs[2] - hpeakidxs[1] < 60 :
-			stopLine = True
 
+	# hpeakidxs = horizen_peaks( wraped_image, 3)
+	# stopLine = False
+	# if hpeakidxs is not None:
+	# 	print( hpeakidxs )
+	# 	if hpeakidxs[0] > height/4 and 10 < hpeakidxs[1] - hpeakidxs[0] < 30 and 35< hpeakidxs[2] - hpeakidxs[1] < 60 :
+	# 		stopLine = True
 
 	elapsed = time() - start
 
-	label = 'w: %.3f  t:%.2f' % (ctrl_theta,  elapsed*1000)
+	label = 'w: %.3f dc:%d  t:%.2f' % (ctrl_theta,  d_center, elapsed*1000)
 	result_image = cv2.putText(result_image, label, (30,20), 0, 0.7, (255,0,0), 2, cv2.LINE_AA)
-	if stopLine :
-		label = 'Stop  !'
-		result_image = cv2.putText(result_image, label, (30,50), 0, 0.7, (0,0,196), 2, cv2.LINE_AA)
+	if stopline :
+		label = 'Stop line !'
+		result_image = cv2.putText(result_image, label, (30,50), 0, 0.7, (0,0,255), 2, cv2.LINE_AA)
+	if obstacles :
+		result_image = cv2.putText(result_image, 'Obstacle, stop! ', (30,50), 0, 0.7, (0,0,255), 2, cv2.LINE_AA)
 
-
-	
 #	combo_image = cv2.addWeighted(undis_image, 0.8, line_image, 1, 1)
 
+	#the perspect wrap rectangle
 	pts = np.array( src , np.int32)
 	pts = pts.reshape((-1,1,2))
-
-
 
 	plt.subplot(231)
 	b,g,r = cv2.split(undis_image)  
@@ -151,17 +129,12 @@ def histogram_analy(  image_file, undisort, algorithm  ):
 	# plt.imshow(line_image, cmap = plt.cm.gray )
 	plt.title("line img")
 
-
-
 	plt.subplot(235)
-
 	cv2.polylines(result_image,[pts],True,(255,255,255))
-
 	b,g,r = cv2.split(result_image)  
 	img2 = cv2.merge([r,g,b])  
 	plt.imshow(img2)
 	plt.title("result  img")
-
 	plt.tight_layout()
 
 	histogram = np.sum(wraped_image[200:,:], axis=0) #height//2
@@ -243,4 +216,7 @@ if __name__ == '__main__':
 	args = parse_args()
 	print('Called with args:')
 	print(args)
+	# image=cv2.imread(args.file)
+	# cv2.imshow("ttt", image)
+	# cv2.waitKey(0)
 	histogram_analy(args.file, args.undisort, args.algorithm)

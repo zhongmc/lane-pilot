@@ -149,7 +149,7 @@ var driveHandler = new function() {
       manager.on('start', function(evt, data) {
         state.tele.user.angle = 0
         state.tele.user.throttle = 0
-        state.recording = true
+       // state.recording = true
         joystickLoopRunning=true;
         joystickLoop();
 
