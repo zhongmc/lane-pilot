@@ -38,6 +38,7 @@ class WebController(tornado.web.Application):
         self.pilotOn = False
         self.image_timestamp = time.time()
         self.pilot = None
+        self.record_vw = False
 
         handlers = [
             (r"/", tornado.web.RedirectHandler, dict(url="/drive")),
@@ -81,10 +82,14 @@ class WebController(tornado.web.Application):
         self.cap_image_data = None
         self.set_cap_image( img )
 
+    def capture_collision_image(self, img_type):
+        ret = self.pilot.capture_collision_image( img_type )
+        return ret
+
     def updateDrive(self ):
         if self.pilot is None:
             return None
-        ret = self.pilot.drive_car( -self.angle, self.throttle , self.pilotOn, self.recording ) 
+        ret = self.pilot.drive_car( -self.angle, self.throttle , self.pilotOn, self.recording, self.record_vw ) 
         return ret
 
 
@@ -94,7 +99,7 @@ class WebController(tornado.web.Application):
 class DriveHandler(tornado.web.RequestHandler):
     def get(self):
         data = {}
-        self.render("templates/vehicle.html", **data)
+        self.render("templates/lane_pilot.html", **data)
         
     def post(self):
         '''
@@ -107,6 +112,7 @@ class DriveHandler(tornado.web.RequestHandler):
         self.application.mode = data['drive_mode']
         self.application.recording = data['recording']
         self.application.pilotOn = data['pilotOn']
+        self.application.record_vw = data['record_vw']
 #        print( self.application.angle,  self.application.throttle, self.application.mode, self.application.pilotOn )
         ret =  self.application.updateDrive()
         self.set_header('Content-Type', 'application/json; charset=UTF-8')
@@ -123,11 +129,18 @@ class CaptureHandler(tornado.web.RequestHandler):
             self.set_header("Context-Type", "image/jpg")
             self.set_header("Content-Disposition", 'filename="capturedImage.jpg"')
             self.write(self.application.cap_image_data)
+            self.finish()
 
-        else:
+        elif arg == 'cap_img':
             ret = self.application.capture_image()
             self.set_header('Content-Type', 'text/html; charset=UTF-8')
             content = '<img src="/capture?action=img&id=%d" alt="cap image"></img>' % int(time.time()*1000)
+            self.write(content )
+            self.finish()
+        elif arg == 'plain_img' or arg == 'obstacle_img':
+            ret = self.application.capture_collision_image( arg )
+            self.set_header('Content-Type', 'text/html; charset=UTF-8')
+            content = "OK!"
             self.write(content )
             self.finish()
 

@@ -459,9 +459,9 @@ def line_fit_with_contours_image( image ):
 	righty = nonzeroy[right_lane_inds]
 
 	if lefty is None or righty is None:
-		return None, 0
+		return None, 0, 0, False, False
 	if len(lefty ) == 0 or len(righty ) == 0 :
-		return None, 0
+		return None, 0, 0, False, False
 	line_image = np.zeros((height, width, 3), dtype=np.uint8)
 	# line_image = (np.dstack((image, image, image))*255).astype('uint8')
 	window_img = np.zeros_like(line_image)
@@ -530,21 +530,61 @@ def line_fit_with_contours_image( image ):
 
 	obstacles = False
 	stopline = False
-
-	lane_width = int(right_x0 - left_x0) - 2*margin -  30
+	wid_cnt = 0
+	lane_width = width - 150 - 2*margin  # int(right_x0 - left_x0) - 2*margin -  30
 	y0 = height
-	wid_contours = []
+	# wid_contours = []
+	
+	obt_xl = int((left_x0 + right_x0)/2 - lane_width / 4)
+	obt_xr = int((left_x0 + right_x0)/2 + lane_width / 4)
+
+	# print(obt_xl, obt_xr)
+
 	for i in range(0, len(contours)):
+#		area = cv2.contourArea(contours[i] )
+#最小内接矩形 center(x,y) = rect[0], width rect[1][0] height rect[1][1] 旋转角度 rect[2]
+		# rect = cv2.minAreaRect( contours[i])
+		# box = cv2.boxPoints( rect )
+		# box = np.int0(box )
+		# print( rect[1][0], rect[1][1], rect[2])
+		# print( box )
+		# w = rect[1][0]
+		# isObt = False
+		# if box[0][0] >= obt_xl and box[0][0] < obt_xr:
+		# 	isObt = True
+		# if box[1][0] >= obt_xl and box[1][0] < obt_xr:
+		# 	isObt = True
+		# if box[2][0] >= obt_xl and box[2][0] < obt_xr:
+		# 	isObt = True
+		# if box[3][0] >= obt_xl and box[3][0] < obt_xr:
+		# 	isObt = True
+		
+		# if isObt == True :
+		# 	obstacles = True
+		# 	cv2.drawContours(line_image, [box], 0, (0, 0,196), 2)
+		# 	print('its a obstacle')
+		isObt = False
 		x,y,w,h = cv2.boundingRect( contours[i] )
-		cv2.rectangle(line_image, (x,y), (x+w, y+h), (0,0,196), 3)
-		if w > 80 and h > 50 :
-			obstacles = True
-		if w >= lane_width and h<35 :
-			wid_contours.append( (x, y, w, h))
-			if y < y0:
-				y0 = y
-		if len(wid_contours ) == 4 and y0 > height/5:
+		if  w > lane_width/3 :
+			if x > left_x0 and x+w < right_x0 :
+				isObt = True
+			elif x < left_x0:
+				if x+w > left_x0 + lane_width/4:
+					isObt = True
+			elif x < right_x0: 
+				if right_x0 - x > lane_width/4:
+					isObt = True
+			if isObt == True:
+				obstacles = True
+				cv2.rectangle(line_image, (x,y), (x+w, y+h), (0,0,196), 2)
+			#	print( x,y,w,h)
+
+		if w >= lane_width  and h<35 :
+			cv2.rectangle(line_image, (x,y), (x+w, y+h), (0,196,196), 2)
+			wid_cnt = wid_cnt + 1
+		if wid_cnt  == 4:
 			stopline = True
+			obstacles = False
 	# print(y0,  lane_width)
 	# print(wid_contours )
 	return line_image, avg_theta, d_center, stopline, obstacles

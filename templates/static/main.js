@@ -14,6 +14,7 @@ var driveHandler = new function() {
                   'brakeOn': true,
                   'pilotOn':false,
                   'recording': false,
+                  'record_vw':false,
                   'driveMode': "user",
                   'pilot': 'None',
                   'session': 'None',
@@ -43,7 +44,7 @@ var driveHandler = new function() {
     this.load = function() {
       driveURL = '/drive'
       vehicleURL = '/drive'
-      captureURL = '/capture?action=cap'
+      captureURL = '/capture'
 
       setBindings()
 
@@ -56,20 +57,20 @@ var driveHandler = new function() {
       var manager = nipplejs.create(joystick_options);
       bindNipple(manager)
       
-      if(!!navigator.getGamepads){
-        console.log("Device has gamepad support.")
-        hasGamepad = true;
-      }
+      // if(!!navigator.getGamepads){
+      //   console.log("Device has gamepad support.")
+      //   hasGamepad = true;
+      // }
 
-      if (window.DeviceOrientationEvent) {
-        window.addEventListener("deviceorientation", handleOrientation);
-        console.log("Browser supports device orientation, setting control mode to tilt.");
-        state.controlMode = 'tilt';
-        deviceOrientationLoop();
-      } else {
-        console.log("Device Orientation not supported by browser, setting control mode to joystick.");
-        state.controlMode = 'joystick';
-      }
+      // if (window.DeviceOrientationEvent) {
+      //   window.addEventListener("deviceorientation", handleOrientation);
+      //   console.log("Browser supports device orientation, setting control mode to tilt.");
+      //   state.controlMode = 'tilt';
+      //   deviceOrientationLoop();
+      // } else {
+      //   console.log("Device Orientation not supported by browser, setting control mode to joystick.");
+      //   state.controlMode = 'joystick';
+      // }
     };
 
 
@@ -109,6 +110,18 @@ var driveHandler = new function() {
         toggleRecording();
       });
 
+      $('#record_pilot_button').click(function(){
+        toggleRecordPilot();
+      });
+
+      $('#plain_button').click(function(){
+          capturePlainImage();
+      });
+
+      $('#obstacle_button').click(function(){
+        captureObstacleImage();
+    });
+
       $('#brake_button').click(function() {
         toggleBrake();
       });
@@ -118,9 +131,7 @@ var driveHandler = new function() {
       });
 
       $('#capture_button').click( function(){
-      
-        captureImage();
-
+          captureImage();
       });
 
       $('input[type=radio][name=controlMode]').change(function() {
@@ -221,15 +232,32 @@ var driveHandler = new function() {
 
       if (state.recording) {
         $('#record_button')
-          .html('Stop Recording (r)')
+          // .html('Stop Recording (r)')
           .removeClass('btn-info')
+          .attr('title', 'stop record')
           .addClass('btn-warning').end()
       } else {
         $('#record_button')
-          .html('Start Recording (r)')
+          // .html('Start Recording (r)')
           .removeClass('btn-warning')
+          .attr('title', 'start record video')
           .addClass('btn-info').end()
       }
+
+      if (state.record_vw) {
+        $('#record_pilot_button')
+          // .html('Stop Recording (r)')
+          .removeClass('btn-info')
+          .attr('title', 'stop record')
+          .addClass('btn-warning').end()
+      } else {
+        $('#record_pilot_button')
+          // .html('Start Recording (r)')
+          .removeClass('btn-warning')
+          .attr('title', 'start record pilot')
+          .addClass('btn-info').end()
+      }
+
 
       if (state.pilotOn) {
         $('#pilot_button')
@@ -245,31 +273,31 @@ var driveHandler = new function() {
 
       if (state.brakeOn) {
         $('#brake_button')
-          .html('Start Vehicle')
+          .html('Start Robot')
           .removeClass('btn-danger')
           .addClass('btn-success').end()
       } else {
         $('#brake_button')
-          .html('Stop Vehicle')
+          .html('Stop Robot')
           .removeClass('btn-success')
           .addClass('btn-danger').end()
       }
 
-      if(deviceHasOrientation) {
-        $('#tilt-toggle').removeAttr("disabled")
-        $('#tilt').removeAttr("disabled")
-      } else {
-        $('#tilt-toggle').attr("disabled", "disabled");
-        $('#tilt').prop("disabled", true);
-      }
+      // if(deviceHasOrientation) {
+      //   $('#tilt-toggle').removeAttr("disabled")
+      //   $('#tilt').removeAttr("disabled")
+      // } else {
+      //   $('#tilt-toggle').attr("disabled", "disabled");
+      //   $('#tilt').prop("disabled", true);
+      // }
 
-      if(hasGamepad) {
-        $('#gamepad-toggle').removeAttr("disabled")
-        $('#gamepad').removeAttr("disabled")
-      } else {
-        $('#gamepad-toggle').attr("disabled", "disabled");
-        $('#gamepad').prop("disabled", true);
-      }
+      // if(hasGamepad) {
+      //   $('#gamepad-toggle').removeAttr("disabled")
+      //   $('#gamepad').removeAttr("disabled")
+      // } else {
+      //   $('#gamepad-toggle').attr("disabled", "disabled");
+      //   $('#gamepad').prop("disabled", true);
+      // }
 
       if (state.controlMode == "joystick") {
         $('#joystick-column').show();
@@ -286,17 +314,6 @@ var driveHandler = new function() {
       }
 
       //drawLine(state.tele.user.angle, state.tele.user.throttle)
-    };
-
-    var getCaptureImage = function(){
-
-      $.get(captureURL, function(data){
-          $("#captureImage").html(data);
-
-          $('#captureImageDialog').modal('show');
-      }).fail(function(){
-        alert('failed to capture!');
-      }); 
     };
 
     var postDrive = function() {
@@ -320,7 +337,8 @@ var driveHandler = new function() {
                                 'throttle':state.tele.user.throttle,
                                 'drive_mode':state.driveMode,
                                 'pilotOn':state.pilotOn,
-                                'recording': state.recording})
+                                'recording': state.recording,
+                              'record_vw':state.record_vw})
         // console.log(data)
         $.post(driveURL, data, function( retData ){
            // console.log( retData );
@@ -494,6 +512,11 @@ var driveHandler = new function() {
       postDrive()
     };
 
+    toggleRecordPilot= function(){
+      state.record_vw = !state.record_vw;
+      postDrive();
+    };
+
     var togglePilot = function(){
       state.pilotOn = !state.pilotOn;
       postDrive();
@@ -504,7 +527,29 @@ var driveHandler = new function() {
     };
 
     var   captureImage = function(){
-        getCaptureImage();
+
+      var url = captureURL + '?action=cap_img';
+      $.get(url, function(data){
+            $("#captureImage").html(data);
+            $('#captureImageDialog').modal('show');
+        }).fail(function(){
+          alert('failed to capture!');
+        }); 
+    };
+
+
+    var capturePlainImage = function(){
+        var url = captureURL + '?action=plain_img';
+        $.get(url).fail(function(){
+          alert( 'failed to capture plain image!');
+        });
+    };
+
+    var captureObstacleImage = function(){
+      var url = captureURL + '?action=obstacle_img';
+      $.get(url).fail(function(){
+        alert( 'failed to capture obstacle image!');
+      });
     };
 
     var toggleBrake = function(){

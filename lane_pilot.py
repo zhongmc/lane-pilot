@@ -10,6 +10,7 @@ import os
 import math
 import argparse
 import datetime
+from uuid import uuid1
 
 from zmcrobot import ZMCRobot
 from web_camera import WebController, open_cam_onboard
@@ -21,6 +22,7 @@ from lane_detector import  canny, sobel,  transform_matrix_640,transform_matrix_
 import sys
 from time import time
 from threading import Thread
+import signal
 
 class LanePilot():
 	def __init__(self):
@@ -36,6 +38,10 @@ class LanePilot():
 		self.height = 240
 		self.recording = False
 		self.videoWriter = None
+		self.start_time = time()
+		self.frame_cnt = 0
+		self.req_quit = False
+		self.recording_vw = False
 
 	def start(self, width, height, sensor_id, port, serial_port, algorithm):
 		''' Start the lane pilot server  '''
@@ -44,10 +50,15 @@ class LanePilot():
 
 		self.robot = ZMCRobot(serial_port )
 		self.web = WebController( port  )
-
 		self.web.pilot = self
 		# self.web.start( port )
-		
+		self.mkdir('cap_imgs')
+		self.mkdir('dataset')
+		self.mkdir('dataset/blocked')
+		self.mkdir('dataset/free')
+		self.mkdir('dataset_vw')
+
+
 		cap = open_cam_onboard(width,height, sensor_id )
 		if not cap.isOpened():
 			print( 'failed to open camera!')
@@ -57,16 +68,29 @@ class LanePilot():
 		cap.release()
 		cv2.destroyAllWindows()
 
-	def drive_car(self, angle, throttle, pilot , recording ):
+	def mkdir(self, pathname ):
+		try:
+			print('try to mkdir:', pathname)
+			os.makedirs(pathname )
+		except FileExistsError:
+			print('dir exist!')
+
+	def drive_car(self, angle, throttle, pilot , recording, record_vw  ):
 		ret = {}
 		ret['x'] = self.robot.x
 		ret['y'] = self.robot.y
 		ret['theta'] = self.robot.theta
+		ret['v'] = self.robot.v
 
 		if recording == True:
 			self.startRecording()
 		else:
 			self.stopRecording()
+
+		if record_vw == True:
+			self.startRecordVW()
+		else:
+			self.stopRecordVW()
 
 		if self.pilotOn == True and self.onTurnBack : #pilot mode and on stop line;
 			return ret
@@ -78,6 +102,8 @@ class LanePilot():
 		self.pilotOn = pilot
 		if self.pilotOn == False:
 			self.robot.drive_car(throttle, angle  )
+			if self.recording_vw :
+				self.capture_vw_image( throttle,angle )
 
 		# self.onTurnBack = False  # stop current turn back ???
 		return ret
@@ -85,12 +111,15 @@ class LanePilot():
 	def startRecording(self ):
 		if self.recording == True:
 			return
+
+		self.start_time = time()
+		self.frame_cnt = 0
 		self.recording = True
 		tn = datetime.datetime.now()
-		filename = 'cap_imgs/video' + tn.strftime('%m-%d-%H%M%S.avi')
+		filename = 'cap_videos/video' + tn.strftime('%m-%d-%H%M%S.avi')
 		print('cap video to: ', filename )
 		fourcc = cv2.VideoWriter_fourcc(*'XVID')
-		self.videoWriter = cv2.VideoWriter(filename, fourcc, 10, (self.width, self.height ) )
+		self.videoWriter = cv2.VideoWriter(filename, fourcc, 20, (self.width, self.height ) )
 		if self.videoWriter is None:
 			print( 'failed to open video writer !')
 
@@ -100,6 +129,17 @@ class LanePilot():
 		self.recording = False
 		self.videoWriter.release()
 
+	def startRecordVW(self ):
+		if self.recording_vw == True:
+			return
+		self.recording_vw = True
+		print('start to record vw imgs to dataset_vw')
+
+	def stopRecordVW(self):
+		if self.recording_vw == False:
+			return
+		self.recording_vw = False
+		print('stop record vw imgs.')
 
 #to do capture a large image???
 	def capture_image(self):
@@ -110,6 +150,33 @@ class LanePilot():
 		cv2.imwrite(filename, self.image_data, [int(cv2.IMWRITE_JPEG_QUALITY),80])
 		print('capture img:', filename)
 		return self.image_data
+
+
+	def capture_collision_image(self, img_type ):
+		path = 'dataset/blocked/'
+		if img_type == 'plain_img':
+			path = 'dataset/free/'
+		tn = datetime.datetime.now()
+		filename = path  + tn.strftime('%m-%d-%H%M%S.jpg')
+		cv2.imwrite(filename, self.image_data, [int(cv2.IMWRITE_JPEG_QUALITY),80])
+		print('capture img:', filename)
+		return True
+
+	def capture_vw_image(self, v, w ):
+		if 	self.frame_cnt%2 == 0:
+			return
+		tn = datetime.datetime.now()
+		astr = str(uuid1())
+		astr = astr[0:8]
+		filename = 'dataset_vw/xy_%03d_%04d_%s.jpg' % (int(100*v), int(1000*w + 3000), astr )
+		cv2.imwrite(filename, self.image_data, [int(cv2.IMWRITE_JPEG_QUALITY),80])
+
+	def signal_handler(self, signal, frame):
+		print('ctrl + c pressed ...')
+		str = input("[y/n] to quit or not?")
+		if str == 'y' or str == 'Y':
+			self.req_quit = True
+
 
 	def line_pilot(self, cap, width, height, algorithm ):
 		# ncamera_cal for 3264*2464
@@ -123,17 +190,25 @@ class LanePilot():
 		t.daemon = True
 		t.start()
   
+		signal.signal(signal.SIGINT, self.signal_handler )
 		m, m_inv,src =transform_matrix_640()
 		if width == 320:
 			m, m_inv,src = transform_matrix_320()
 		elapsed = 0
 		ctrl_theta = 0
 		d_center = 0
+		failedCnt = 0
+
+		self.start_time = time()
 		while True:
 			start = time()
+			if self.req_quit == True:
+				print( "required to quit!")
+				break
+
 			ret, image = cap.read() #grap the next image frame
 			if not ret:
-				key = cv2.waitKey(1)
+				key = cv2.waitKey(40)
 				if key == 27: # ESC key: quit program
 					break
 				continue
@@ -157,10 +232,9 @@ class LanePilot():
 			except BaseException:
 				#print('line detect failed ' )
 				line_image = None
-
+				failedCnt = failedCnt + 1
 			# lines,  left_fit, right_fit, line_theta,  d_center   = line_fit( wraped_image )
 			# line_image = np.zeros_like(image)
-
 			if self.onTurnBack :
 				label = 'turn back...'
 				if self.robot.turn_back_ok():
@@ -171,15 +245,24 @@ class LanePilot():
 					ctrl_theta = np.pi/2 + line_theta
 					w = -0.9*ctrl_theta + 1.2* d_center/width
 					if self.pilotOn :
-						self.robot.drive_car(0.10, w )
-					label = 'q:%.3f d:%d w:%.3f' % (ctrl_theta,d_center,w)
-				else:
-					if self.pilotOn:
-						self.robot.drive_car(0, 0 ) # stop the car when none line 
-					label = 'failed to detect'
+						self.robot.drive_car(0.09, w )
+						if self.recording_vw :
+							self.capture_vw_image( 0.09, w )
 
+					label = 'd:%d w:%.3f' % (d_center,w)
+					failedCnt = 0
+				else:
+					if self.pilotOn and failedCnt > 5:
+						self.robot.drive_car(0, 0 ) # stop the car when none line 
+						if self.recording_vw :
+							self.capture_vw_image( 0, 0 )
+
+					label = 'failed to detect'
+					failedCnt = failedCnt + 1
 				if obstacles == True:
 					self.robot.drive_car(0, 0)
+					if self.recording_vw :
+						self.capture_vw_image( 0, 0 )
 					label = "Obstacle!"					
 				# hpeakidxs = horizen_peaks( wraped_image, 3)
 				# stopline = False
@@ -193,7 +276,7 @@ class LanePilot():
 				if stopline == True and self.pilotOn == True : #stop lines turn arround
 					self.onTurnBack = True
 					self.robot.turn_back()
-					self.capture_image()
+				#	self.capture_image()
 					label = 'turn back...'
 					print('stop and turn back.')
 		# Warp the blank back to original image space using inverse perspective matrix (Minv)
@@ -203,19 +286,26 @@ class LanePilot():
 				result_image = cv2.addWeighted(undis_image, 1, newwarp, 0.5, 0)
 			else:
 				result_image = undis_image
-			result_image = cv2.putText(result_image, label, (30,40), 0, 0.5, (128,0,128), 2, cv2.LINE_AA)
-		
+			result_image = cv2.putText(result_image, label, (30,40), cv2.FONT_HERSHEY_PLAIN, 1.5, (255,255,40), 2, cv2.LINE_AA)
+
+			elapsed = int( time() - self.start_time)
+			elapsed_label = '%02d:%02d %03d'  % (int(elapsed/60), elapsed%60, self.frame_cnt )	
+			self.frame_cnt+=1
+
+			cv2.putText(result_image, elapsed_label, (5, 15),  cv2.FONT_HERSHEY_PLAIN, 1, (0,196,0), 2, cv2.LINE_AA)
+			v_label = '%.2f' % (self.robot.v)
+			cv2.putText(result_image, v_label, (width-50, 15),  cv2.FONT_HERSHEY_PLAIN, 1, (196,196,196), 2, cv2.LINE_AA)
+
 			self.web.update_image( result_image )
 			
 			if self.recording == True and  self.videoWriter is not None:
 				self.videoWriter.write( result_image )
-
-			elapsed = time() - start
 #		cv2.imshow(WINDOW_NAME, result_image )
-			# tw = int( 100 - elapsed )
-			# if tw <= 0 :
-			# 	tw = 1
-			key = cv2.waitKey(1)
+			tw = 1000 * ( time() - start)
+			tw =int( 50 - tw)
+			if tw <= 0 :
+			 	tw = 1
+			key = cv2.waitKey(tw)
 			if key == 27: # ESC key: quit program
 				break
 		self.robot.shutdown()
