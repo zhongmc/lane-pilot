@@ -83,15 +83,10 @@ var driveHandler = new function() {
           if(e.which == 75) { throttleDown() } // 'k'  slow down
           if(e.which == 74) { angleLeft() } // 'j' turn left
           if(e.which == 76) { angleRight() } // 'l' turn right
-          if(e.which == 65) { updateDriveMode('auto') } // 'a' turn on auto mode
+          if( e.which == 77) { brake()}
+          // if(e.which == 65) { updateDriveMode('auto') } // 'a' turn on auto mode
           if(e.which == 68) { updateDriveMode('user') } // 'd' turn on manual mode
-          if(e.which == 83) { updateDriveMode('auto_angle') } // 'a' turn on auto mode
-      });
-
-
-      $('#pilot_select').on('change', function () {
-        state.pilot = $(this).val(); // get selected value
-        postPilot()
+          // if(e.which == 83) { updateDriveMode('auto_angle') } // 'a' turn on auto mode
       });
 
       $('#mode_select').on('change', function () {
@@ -150,9 +145,9 @@ var driveHandler = new function() {
           console.log('gamepad mode')
           gamePadLoop();
         }
-        updateUI();
       });
 
+      updateUI();
     };
 
 
@@ -184,11 +179,6 @@ var driveHandler = new function() {
       });
     }
 
-
-    var postPilot = function(){
-        data = JSON.stringify({ 'pilot': state.pilot })
-        $.post(vehicleURL, data)
-    }
 
 
     var updateUI = function() {
@@ -316,6 +306,13 @@ var driveHandler = new function() {
       //drawLine(state.tele.user.angle, state.tele.user.throttle)
     };
 
+
+    var postPilot = function(){
+      data = JSON.stringify({ 'pilot': state.pilot })
+      $.post(vehicleURL, data)
+  }
+
+
     var postDrive = function() {
 
         if( netFailed )
@@ -337,6 +334,7 @@ var driveHandler = new function() {
                                 'throttle':state.tele.user.throttle,
                                 'drive_mode':state.driveMode,
                                 'pilotOn':state.pilotOn,
+                                'pilot':state.pilot,
                                 'recording': state.recording,
                               'record_vw':state.record_vw})
         // console.log(data)
@@ -555,8 +553,6 @@ var driveHandler = new function() {
     var toggleBrake = function(){
       state.brakeOn = !state.brakeOn;
       initialGamma = null;
-      
-
       if (state.brakeOn) {
         brake();
       }

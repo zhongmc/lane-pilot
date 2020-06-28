@@ -11,7 +11,7 @@ import os
 import math
 
 from zmcrobot import ZMCRobot
-from lane_detector import  canny, sobel,  transform_matrix_640,transform_matrix_320, horizen_peaks, line_fit_with_image,line_fit_with_contours_image
+from lane_detector import  canny, sobel,  transform_matrix, horizen_peaks, line_fit_with_image,line_fit_with_contours_image
 
 #from combined_thresh import combined_thresh, magthresh
 #from line_fit import line_fit, viz2, calc_curve, final_viz
@@ -20,31 +20,24 @@ import sys
 import argparse
 from time import time
 
-
 def parse_args():
-    # Parse input arguments
-    desc = 'dectect Lanes in the image'
-    parser = argparse.ArgumentParser(description=desc)
-    parser.add_argument('--file', '-f',  dest='file',
-                        help='the file to analys' )
-    parser.add_argument('--undisort', '-ud',  dest='undisort',
-                        help='image is undisorted, do not undisort it ',
-                        action='store_true')
-    parser.add_argument('--algs', '-a',  dest='algorithm',
-                        help='algorithm to use [canny, sobel]',
-                        default='canny')
-    args = parser.parse_args()
-    return args
+	desc = 'dectect Lanes in the image'
+	parser = argparse.ArgumentParser(description=desc)
+	parser.add_argument('--file', '-f',  dest='file', help='the file to analys' )
+	parser.add_argument('--undisort', '-ud',  dest='undisort', help='image is undisorted, do not undisort it ', action='store_true')
+	parser.add_argument('--algs', '-a',  dest='algorithm', help='algorithm to use [canny, sobel]', default='canny')
+	parser.add_argument('--lens',  dest = 'lens', help = 'camera lens used to cap the image 120 160', default=120, type=int)
+	args = parser.parse_args()
+	return args
 
-def histogram_analy(  image_file, undisort, algorithm  ):
+def histogram_analy(  image_file, undisort, algorithm, lens  ):
 	print( image_file )
 	image=cv2.imread(image_file)
 	start = time()
 	height = image.shape[0]
 	width = image.shape[1]
-	cal_file = 'ncamera_cal' + str(width) + '-' + str(height) + '.p'
+	cal_file = 'cal' + str(lens ) + '-' + str(width) + '-' + str(height) + '.p'
 	with open(cal_file, 'rb') as f:
-	# with open('camera_cal640-480.p', 'rb') as f:
 		save_dict = pickle.load(f)
 	mtx = save_dict['mtx']
 	dist = save_dict['dist']
@@ -52,19 +45,27 @@ def histogram_analy(  image_file, undisort, algorithm  ):
 	if undisort :
 		undis_image = image
 	else :
-		undis_image = cv2.undistort(image, mtx, dist, None, mtx)
-	
+		undis_image = cv2.undistort(image, mtx, dist, None,  mtx)
+		# newmtx, roi = cv2.getOptimalNewCameraMatrix(mtx, dist, (width, height), 0.2, (width, height))
+		# print(newmtx, mtx,  roi )
+		# undis_image = cv2.undistort(image, mtx, dist, None,  newmtx)
+		# x,y,w,h = roi
+		# undis_image = undis_image[y:y+h, x:x+w]
+		# undis_image = cv2.resize(undis_image, (width, height))
+
 	if algorithm == 'canny' :
 		canny_image = canny( undis_image )
 	elif algorithm == 'sobel':
 		canny_image = sobel( undis_image) # ,  sobel_kernel=3, mag_thresh=(50, 255))
 		# canny_image[ canny_image == 1] = 255
 
-	# print( canny_image[120])
-	#	print( elapsed )
-	m, m_inv, src = transform_matrix_640()
-	if width == 320:
-		m, m_inv, src = transform_matrix_320()
+	m, m_inv, src, lane_width = transform_matrix(width, height, lens)
+	# if width == 640:
+	# 	m, m_inv, src = transform_matrix_640()
+	# elif width == 320:
+	# 	m, m_inv, src = transform_matrix_320()
+	# elif width == 244:
+	# 	m, m_inv, src = transform_matrix_244()
 
 	wraped_image = cv2.warpPerspective(canny_image, m, (width, height), flags=cv2.INTER_LINEAR)
 
@@ -72,7 +73,7 @@ def histogram_analy(  image_file, undisort, algorithm  ):
 	
 	# line_image, line_theta, d_center = line_fit_with_image(wraped_image )
 
-	line_image, line_theta, d_center , stopline, obstacles = line_fit_with_contours_image(wraped_image )
+	line_image, line_theta, d_center , stopline, obstacles = line_fit_with_contours_image(wraped_image, lane_width )
 
 	# image, contours, hierarchy = cv2.findContours(wraped_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE   )
 	# for i in range(0, len(contours)):
@@ -81,9 +82,12 @@ def histogram_analy(  image_file, undisort, algorithm  ):
 
 	ctrl_theta = -np.pi/2 - line_theta
 	# Warp the blank back to original image space using inverse perspective matrix (Minv)
-	newwarp = cv2.warpPerspective(line_image, m_inv, (width, height))
-	# Combine the result with the original image
-	result_image = cv2.addWeighted(undis_image, 0.8, newwarp, 0.8, 0)
+	if line_image is not None:
+		newwarp = cv2.warpPerspective(line_image, m_inv, (width, height))
+		# Combine the result with the original image
+		result_image = cv2.addWeighted(undis_image, 0.8, newwarp, 0.8, 0)
+	else:
+		result_image = undis_image
 
 	# hpeakidxs = horizen_peaks( wraped_image, 3)
 	# stopLine = False
@@ -122,12 +126,13 @@ def histogram_analy(  image_file, undisort, algorithm  ):
 	plt.imshow(wraped_image, cmap = plt.cm.gray )
 	plt.title("wraped img")
 
-	plt.subplot(234)
-	b,g,r = cv2.split(line_image)  
-	img2 = cv2.merge([r,g,b])  
-	plt.imshow(img2)
-	# plt.imshow(line_image, cmap = plt.cm.gray )
-	plt.title("line img")
+	if line_image is not None:
+		plt.subplot(234)
+		b,g,r = cv2.split(line_image)  
+		img2 = cv2.merge([r,g,b])  
+		plt.imshow(img2)
+		# plt.imshow(line_image, cmap = plt.cm.gray )
+		plt.title("line img")
 
 	plt.subplot(235)
 	cv2.polylines(result_image,[pts],True,(255,255,255))
@@ -137,7 +142,7 @@ def histogram_analy(  image_file, undisort, algorithm  ):
 	plt.title("result  img")
 	plt.tight_layout()
 
-	histogram = np.sum(wraped_image[200:,:], axis=0) #height//2
+	histogram = np.sum(wraped_image[height//2:,:], axis=0) #height//2
 	histogram = histogram / 255
 	mlval  = np.amax(histogram)
 	plt.subplot(236)
@@ -219,4 +224,4 @@ if __name__ == '__main__':
 	# image=cv2.imread(args.file)
 	# cv2.imshow("ttt", image)
 	# cv2.waitKey(0)
-	histogram_analy(args.file, args.undisort, args.algorithm)
+	histogram_analy(args.file, args.undisort, args.algorithm, args.lens)

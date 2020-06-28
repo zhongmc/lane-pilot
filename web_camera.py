@@ -29,16 +29,17 @@ class WebController(tornado.web.Application):
         this_dir = os.path.dirname(os.path.realpath(__file__))
         self.static_file_path = os.path.join(this_dir, 'templates', 'static')
         self.port = port
-        self.angle = 0.0
-        self.throttle = 0.0
-        self.mode = 'user'
-        self.recording = False
         self.image_data = None
         self.cap_image_data = None
-        self.pilotOn = False
-        self.image_timestamp = time.time()
         self.pilot = None
-        self.record_vw = False
+        self.image_timestamp = time.time()
+        # self.pilotOn = False
+        # self.angle = 0.0
+        # self.throttle = 0.0
+        # self.drive_mode = 'user'
+        # self.recording = False
+        # self.record_vw = False
+
 
         handlers = [
             (r"/", tornado.web.RedirectHandler, dict(url="/drive")),
@@ -60,13 +61,13 @@ class WebController(tornado.web.Application):
        
     def update_image(self, image =None):
         if image is None:
-            return  self.angle, self.throttle, self.mode, self.recording
+            return
         
         r, i = cv2.imencode('.jpg', image )
         if r :
             self.image_data  =  bytes(i.data)
             self.image_timestamp  = time.time()
-        return self.angle, self.throttle, self.mode, self.recording
+        # return self.angle, self.throttle, self.mode, self.recording
 
     def set_cap_image( self, image = None):
         if image is None:
@@ -86,10 +87,17 @@ class WebController(tornado.web.Application):
         ret = self.pilot.capture_collision_image( img_type )
         return ret
 
-    def updateDrive(self ):
+    def updateDrive(self, data ):
         if self.pilot is None:
             return None
-        ret = self.pilot.drive_car( -self.angle, self.throttle , self.pilotOn, self.recording, self.record_vw ) 
+        ret = self.pilot.drive_car( data )
+        # self.angle = data['angle']
+        # self.throttle = data['throttle']
+        # self.drive_mode = data['drive_mode']
+        # self.recording = data['recording']
+        # self.pilotOn = data['pilotOn']
+        # self.record_vw = data['record_vw']
+        # ret = self.pilot.drive_car( -self.angle, self.throttle , self.pilotOn, self.recording, self.record_vw ) 
         return ret
 
 
@@ -107,14 +115,14 @@ class DriveHandler(tornado.web.RequestHandler):
         and throttle of the vehicle on a the index webpage
         '''
         data = tornado.escape.json_decode(self.request.body)
-        self.application.angle = data['angle']
-        self.application.throttle = data['throttle']
-        self.application.mode = data['drive_mode']
-        self.application.recording = data['recording']
-        self.application.pilotOn = data['pilotOn']
-        self.application.record_vw = data['record_vw']
+        # self.application.angle = data['angle']
+        # self.application.throttle = data['throttle']
+        # self.application.drive_mode = data['drive_mode']
+        # self.application.recording = data['recording']
+        # self.application.pilotOn = data['pilotOn']
+        # self.application.record_vw = data['record_vw']
 #        print( self.application.angle,  self.application.throttle, self.application.mode, self.application.pilotOn )
-        ret =  self.application.updateDrive()
+        ret =  self.application.updateDrive( data )
         self.set_header('Content-Type', 'application/json; charset=UTF-8')
         self.write(json.dumps( ret ))
         self.finish()
@@ -186,22 +194,22 @@ def open_window(width, height):
 
 
 
-def open_cam_onboard(width, height, sensor_id):
+def open_cam_onboard(width, height, sensor_id, flip_method = 0):
 	gst_str = ('nvarguscamerasrc '
                    'sensor-id={} ! '
                    'video/x-raw(memory:NVMM), '
                    'width=(int)3264, height=(int)2464, '
                    'format=(string)NV12, framerate=(fraction)20/1 ! '
-                   'nvvidconv flip-method=0 ! '
+                   'nvvidconv flip-method={} ! '
                    'video/x-raw, width=(int){}, height=(int){}, '
                    'format=(string)BGRx ! '
-                   'videoconvert ! appsink').format(sensor_id, width, height)
+                   'videoconvert ! appsink').format(sensor_id, flip_method, width, height)
 	print( gst_str )
 	return cv2.VideoCapture(gst_str, cv2.CAP_GSTREAMER)
 
 
 if __name__ == '__main__':
-    cap = open_cam_onboard(320, 240, 0)
+    cap = open_cam_onboard(320, 240, 0, 0)
     if not cap.isOpened() :
         sys.exit('Failed to open camera!')
     web = WebController()

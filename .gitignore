@@ -127,7 +127,9 @@ venv.bak/
 /cap_imgs
 /dataset
 /dataset_vw
+/dataset_vw-320
 /cap_videos
+/cal_imgs
 
 # mypy
 .mypy_cache/

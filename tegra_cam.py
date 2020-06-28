@@ -18,6 +18,7 @@ import subprocess
 import cv2
 import numpy as np
 import pickle
+import datetime
 
 WINDOW_NAME = 'CameraDemo'
 
@@ -43,6 +44,7 @@ def parse_args():
     parser.add_argument('--dist', dest='undisort',
                         help='show undisort window as well',
                         action='store_true')
+    parser.add_argument('--lens', dest='lens', help='camera lens used 120/ 106 default 120', default=120, type=int)
     parser.add_argument('--vid', dest='video_dev',
                         help='device # of USB webcam (/dev/video?) [1]',
                         default=1, type=int)
@@ -51,6 +53,7 @@ def parse_args():
     parser.add_argument('--width', dest='image_width',
                         help='image width [1920]',
                         default=1280, type=int)
+    parser.add_argument('--flip', dest='flip_method', help='flip method to change image 0: normal 1:90 turn 2: 180 turn', default=0, type = int )
     parser.add_argument('--height', dest='image_height',
                         help='image height [1080]',
                         default=720, type=int)
@@ -59,7 +62,7 @@ def parse_args():
                         default='capfile' )
     parser.add_argument('--path', dest='save_path',
                         help='save file to [path]',
-                        default='cap_images' )
+                        default='cap_imgs' )
 
     args = parser.parse_args()
     return args
@@ -84,7 +87,7 @@ def open_cam_usb(dev, width, height):
     return cv2.VideoCapture(gst_str, cv2.CAP_GSTREAMER)
 
 
-def open_cam_onboard(width, height, sensor_id):
+def open_cam_onboard(width, height, sensor_id, flip_method):
     gst_elements = str(subprocess.check_output('gst-inspect-1.0'))
     if 'nvcamerasrc' in gst_elements:
         # On versions of L4T prior to 28.1, add 'flip-method=2' into gst_str
@@ -103,10 +106,10 @@ def open_cam_onboard(width, height, sensor_id):
                    'video/x-raw(memory:NVMM), '
                    'width=(int)3264, height=(int)2464, '
                    'format=(string)NV12, framerate=(fraction)20/1 ! '
-                   'nvvidconv flip-method=0 ! '
+                   'nvvidconv flip-method={} ! '
                    'video/x-raw, width=(int){}, height=(int){}, '
                    'format=(string)BGRx ! '
-                   'videoconvert ! appsink').format(sensor_id, width, height)
+                   'videoconvert ! appsink').format(sensor_id, flip_method, width, height)
         print( gst_str )
     else:
         raise RuntimeError('onboard camera source not found!')
@@ -127,7 +130,7 @@ def open_window(width, height, undisort ):
 
 
 
-def read_cam(cap, save_path, width, height, undisort, file_counter = 1):
+def read_cam(cap, save_path, width, height, undisort, lens, file_counter = 1):
     show_help = True
     full_scrn = False
     grid_cnt = 20
@@ -149,13 +152,23 @@ def read_cam(cap, save_path, width, height, undisort, file_counter = 1):
         print( pts )
         pts = pts.reshape((-1,1,2))
         print( pts )
-        calfileName = "ncamera_cal" + str(width) + "-" + str(height) + ".p"
-        with open(calfileName, 'rb') as f:
-            save_dict = pickle.load(f)
-            mtx = save_dict['mtx']
-            dist = save_dict['dist']
+        try:
+            calfileName = "cal" + str(lens) + '-' + str(width) + "-" + str(height) + ".p"
+            with open(calfileName, 'rb') as f:
+                save_dict = pickle.load(f)
+                mtx = save_dict['mtx']
+                dist = save_dict['dist']
+        except IOError as e:
+            calfileName = "ncamera_cal640-480.p"
+            with open(calfileName, 'rb') as f:
+                save_dict = pickle.load(f)
+                mtx = save_dict['mtx']
+                dist = save_dict['dist']
+	
+    tn = datetime.datetime.now()
+    fileName = save_path + '/img' + str(lens)   + '-' + str(width ) + '-' + str(height) + '-' + tn.strftime('%m-%d-%H%M%S-')
 
-    fileName = save_path + '/img' + str(width ) + '-' + str(height) + '-'
+    # fileName = save_path + '/img' + str(lens) + '-' + str(width ) + '-' + str(height) + '-'
 	# image = cv2.imread(image_file)
 
     while True:
@@ -236,13 +249,13 @@ def main():
                            args.image_height)
     else: # by default, use the Jetson onboard camera
         cap = open_cam_onboard(args.image_width,
-                               args.image_height, args.sensor_id )
+                               args.image_height, args.sensor_id, args.flip_method )
 
     if not cap.isOpened():
         sys.exit('Failed to open camera!')
 
     open_window(args.image_width, args.image_height , args.undisort )
-    read_cam(cap, args.save_path, args.image_width, args.image_height, args.undisort  )
+    read_cam(cap, args.save_path, args.image_width, args.image_height, args.undisort,args.lens  )
 
     cap.release()
     cv2.destroyAllWindows()

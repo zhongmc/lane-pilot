@@ -113,7 +113,7 @@ if __name__ == '__main__':
 
 	file = args.imgfile.split('.')[0]
 	fileex  = '.' +   args.imgfile.split('.')[1]
-	imgname = args.imgpath + '/' +  file + str(5) + fileex
+	imgname = args.imgpath + '/' +  file + str(1) + fileex
 	img = mpimg.imread( imgname )
 	dst = cv2.undistort(img, mtx, dist, None, mtx)
 	plt.imshow(dst)
